@@ -40,7 +40,10 @@ master password ──Argon2id(salt, m,t,p)──▶ master_key
   nonce-reuse cliff. STREAM chunks are location-bound (no reorder/truncate/splice).
 - **Argon2id over Argon2d/PBKDF2**: memory-hard *and* side-channel-resistant (the KeePassXC auditor's
   explicit recommendation). The **floor is enforced on every open** so a downgraded file is caught;
-  a **ceiling** (coverage-gap A1) rejects hostile/overflowing params *before* allocation.
+  the **ceiling** (also C2) rejects hostile/overflowing params *before* any allocation — necessarily
+  before the keyed header HMAC, which can't be verified until the KDF has run.
+- **NFC normalization of the master password** (C2): macOS keyboards commonly emit NFD where Linux
+  emits NFC; without normalization the same typed password derives different keys per platform.
 - **KDBX-4-style integrity**: unauthenticated `SHA-256(header)` for fast corruption detection, plus
   master-key-**keyed** `HMAC-SHA-256(header)` so an attacker can't downgrade the KDF undetected.
 

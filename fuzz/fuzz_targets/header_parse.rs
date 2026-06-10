@@ -1,4 +1,4 @@
-//! Fuzz the header parser on arbitrary bytes (coverage-gap A4, constraints C7–C9).
+//! Fuzz the header parser on arbitrary bytes (constraints C30, C7–C9).
 //!
 //! Invariant: parsing untrusted input must never panic, hang, or over-allocate. It may only return
 //! `Ok` or a `vault_core::Error`. Run: `cargo +nightly fuzz run header_parse`.

@@ -1,6 +1,6 @@
 # Vault File Format (`.vlt`) — v1
 
-> Authoritative spec: constraints **C1, C7–C10, C18, C19** in [vault_intent.yaml](../vault_intent.yaml).
+> Authoritative spec: constraints **C1, C7–C10, C18, C19, C30, C32** in [vault_intent.yaml](../vault_intent.yaml).
 > This document is the human-readable rendering. All multi-byte integers are **little-endian**.
 
 ## Top-level layout
@@ -26,7 +26,7 @@
 │ HmacBlockStream of 1 MiB blocks, each:                    │  C10
 │   [hmac 32][size u32][ciphertext size]                    │
 │   wrapping the XChaCha20-Poly1305 STREAM (64 KiB chunks)  │  C1
-│     └─ inner header (inner stream key, regen per open)    │  C19
+│     └─ inner header (inner stream key, regen per save)    │  C19
 │     └─ vault_version  u64  (monotonic counter)            │  C16
 │     └─ entries: ALL fields encrypted (incl. URLs/titles)  │  C18
 └───────────────────────────────────────────────────────────┘
@@ -54,15 +54,25 @@ version counter — lives inside the AEAD body.** (C18)
 ## Verification order on open (never skip)
 
 1. `header_hash` (fast, keyless) → reject corrupt files cheaply.
-2. **Reject KDF params outside floor *and* ceiling** before running Argon2id (coverage-gap A1).
+2. **Reject KDF params outside floor *and* ceiling** before running Argon2id (C2 — the ceiling
+   check must precede the KDF because the keyed HMAC in step 3 *requires* the KDF to run).
 3. Argon2id → master key → `header_hmac` → abort on mismatch, decrypt nothing.
 4. Per-block HMAC → per-chunk AEAD tag → only then release plaintext.
 
-## Hardening rules for the parser
+## Writing (atomic saves — C32)
+
+Saves are never in place: serialize to a temp file in the same directory → `fsync` → preserve the
+previous generation as `vault.vlt.bak` → atomic `rename` → `fsync` the directory → verify the new
+file, then remove the backup (or keep it with `keep_backup = true`). An advisory lock is held for
+the unlock session; a second writer fails fast. Temp file and `.bak` are the only other files ever
+created next to the vault, and both are equally opaque encrypted blobs (C17).
+
+## Hardening rules for the parser (C30)
 
 - Bound every length field against the remaining buffer **before** allocating.
 - Reject `stanza_count > 8`, `stanza_data_len > 4096`, and any integer overflow in size math.
-- The parser is **fuzzed** (`fuzz/`) and must never panic, hang, or over-allocate on hostile input.
+- The parser is **fuzzed** (`fuzz/`, run in CI) and must never panic, hang, or over-allocate on
+  hostile input; `vault-core` is `#![forbid(unsafe_code)]` outside the vetted syscall wrappers.
 
 ## Versioning
 

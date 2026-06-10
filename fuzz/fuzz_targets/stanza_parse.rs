@@ -1,4 +1,4 @@
-//! Fuzz stanza-record parsing (coverage-gap A4, constraint C5).
+//! Fuzz stanza-record parsing (constraints C30, C5).
 //!
 //! Stresses bounded-length handling: `stanza_count <= 8`, `stanza_data_len <= 4096`, no overflow.
 #![no_main]

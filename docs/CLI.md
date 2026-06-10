@@ -1,6 +1,6 @@
 # CLI Reference
 
-> Authoritative spec: constraints **C20–C22, C26, C27** in [vault_intent.yaml](../vault_intent.yaml).
+> Authoritative spec: constraints **C20–C22, C26–C29, C31, C33** in [vault_intent.yaml](../vault_intent.yaml).
 > Commands are **not yet implemented** (pre-alpha); this documents the intended surface.
 
 ## Commands
@@ -25,14 +25,15 @@
 ## Secret-handling rules (why the CLI looks the way it does)
 
 - **No secrets on the command line.** Passwords are read via a no-echo prompt, stdin, or
-  `--password-fd N` — never an argv flag (it would leak to shell history and `ps`). *(coverage-gap B1)*
+  `--password-fd N` — never an argv flag (it would leak to shell history and `ps`). *(constraint C31)*
 - **`vault get` delivers to the clipboard by default.** Printing to stdout requires the explicit
   `--stdout` flag, which prints a warning — so an AI agent watching the process's stdout can't
-  silently scrape the secret. *(constraint C27)*
-- **Clipboard auto-clears** after 30s (configurable 5–300s) and is marked transient so OS clipboard
-  history / cloud-clipboard sync skip it. *(constraint C13, coverage-gap B2)*
+  silently scrape the secret. This guards against *incidental* capture; an agent that can run shell
+  commands on an unlocked session is same-user malware (see the threat model). *(constraint C27)*
+- **Clipboard auto-clears** after 30s (configurable 5–300s) and is marked concealed/transient so OS
+  clipboard history / cloud-clipboard sync skip it. *(constraints C13, C33)*
 - **Output is sanitized**: control/ANSI escape sequences in stored fields are neutralized before
-  being written to a terminal. *(coverage-gap A2)*
+  being written to a terminal, and exports escape formula metacharacters. *(constraints C28, C29)*
 
 ## Configuration
 
@@ -41,4 +42,5 @@
 ```toml
 clipboard_timeout = 30     # seconds, 5..=300
 auto_lock_seconds = 300    # seconds, 30..=3600, 0 = disabled
+keep_backup = false        # retain vault.vlt.bak after a verified save (constraint C32)
 ```

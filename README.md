@@ -49,7 +49,7 @@ developer who is nervous about AI exposure can actually adopt it.**
 | In-memory secrets | **`zeroize` + `mlock`** | Often left in plaintext |
 | Whole-file rollback by a sync backend | **Detected** (monotonic counter) | Undetected |
 | AI-era hardening | **CSPRNG generation + model-blind delivery** | Not designed for it |
-| How you verify the claims | **27 constraints, each with a test** | Trust us |
+| How you verify the claims | **34 constraints, each with a test** | Trust us |
 
 ## Design at a glance
 
@@ -80,7 +80,11 @@ vault ls --search git           # search after unlock (in-memory only)
 ```
 
 Secrets are **never** passed as command-line arguments, and `vault get` delivers to the clipboard
-by default so an AI agent watching stdout can't scrape them. See [docs/CLI.md](docs/CLI.md).
+by default so an AI agent watching stdout can't scrape them. To be precise about the boundary:
+this defends against *incidental* capture (a secret landing in an agent's transcript); a hostile
+agent with shell access to an unlocked session is same-user malware, bounded — not eliminated — by
+auto-lock and clipboard concealment. See [docs/CLI.md](docs/CLI.md) and the
+[threat model](docs/THREAT_MODEL.md).
 
 ## Project status
 
@@ -88,7 +92,7 @@ Vault follows **Intent-Verified Development**: the design is captured as testabl
 *before* code. We are here:
 
 - ✅ Research foundation — [research/](research/)
-- ✅ Intent specification — [vault_intent.yaml](vault_intent.yaml) (27 constraints, 10 groups)
+- ✅ Intent specification — [vault_intent.yaml](vault_intent.yaml) (34 constraints, 11 groups)
 - ✅ Open-source scaffolding — this repository
 - ⏳ Implementation — by constraint segment (see [ROADMAP.md](ROADMAP.md))
 - ⏳ Independent security audit before v1.0

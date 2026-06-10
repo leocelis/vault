@@ -6,6 +6,7 @@ Vault is a Cargo workspace with a deliberately small, auditable security core.
 ┌─────────────────────────────────────────────────────────────┐
 │  vault-cli  (the `vault` binary)                             │
 │  clap commands · clipboard/stdout delivery · prompts         │  C20–C22, C26, C27
+│  output sanitization · export escaping · no argv secrets     │  C28, C29, C31
 └───────────────┬─────────────────────────────────────────────┘
                 │ depends on
 ┌───────────────▼─────────────────────────────────────────────┐
@@ -13,9 +14,9 @@ Vault is a Cargo workspace with a deliberately small, auditable security core.
 │                                                              │
 │  crypto/     XChaCha20-Poly1305 STREAM · Argon2id · HKDF     │  C1–C3
 │  envelope/   data key · multi-stanza OR wrapping            │  C4–C6
-│  format/     header · KDF params · integrity · block stream  │  C7–C10
-│  memory/     Secret/Zeroizing types · mlock · constant-time  │  C11–C13, C25
-│  rollback/   monotonic counter · local state anchor          │  C16
+│  format/     header · KDF params · integrity · block stream  │  C7–C10, C30
+│  memory/     Secret/Zeroizing types · mlock · constant-time  │  C11–C13, C25, C33
+│  rollback/   monotonic counter · local anchor · atomic save  │  C16, C32
 └───────────────┬─────────────────────────────────────────────┘
                 │ optional
 ┌───────────────▼─────────────────────────────────────────────┐
@@ -51,5 +52,8 @@ Vault is a Cargo workspace with a deliberately small, auditable security core.
 - No `==` on secret bytes — constant-time only. `C25`
 - No payload byte is returned before its authentication tag verifies. `C1`, `C9`, `C10`
 - No secret is ever written to a network socket or an LLM-readable channel by default. `C23`, `C27`
+- No secret is ever accepted as a command-line argument. `C31`
+- No stored field reaches a terminal or an export file unsanitized. `C28`, `C29`
+- No in-place write of the vault file — atomic rename with a verified backup, always. `C32`
 
 See [CRYPTO.md](CRYPTO.md) and [FILE_FORMAT.md](FILE_FORMAT.md) for the details.

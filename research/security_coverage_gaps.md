@@ -1,9 +1,9 @@
 # Security Coverage Gaps — Areas the Vault Should Cover (and Currently Doesn't)
 
 > **Status:** Coverage-gap research (June 2026). Third companion to `vault_spec.md` and
-> `llm_offensive_threats.md`. This document audits the **27 constraints** in
+> `llm_offensive_threats.md`. This document audited the **27 constraints** then in
 > `vault_intent.yaml` against the full attack surface of a real-world, locally-installed,
-> sync-exposed credential vault and identifies where coverage is **missing** or **partial**.
+> sync-exposed credential vault and identified where coverage was **missing** or **partial**.
 >
 > **Method:** each gap is stated as a concrete attacker capability, mapped to the existing
 > constraint(s) that touch it, given a coverage verdict, grounded in precedent (CVE / CWE /
@@ -12,6 +12,10 @@
 > **These are findings, not changes.** Per design-before-implementation discipline, nothing
 > here is added to `vault_intent.yaml` until explicitly approved. Proposed constraint IDs
 > (C28+) are placeholders to make discussion concrete.
+> **Update 2026-06-10:** the high-severity subset was explicitly approved and promoted — see the
+> *Promotion ledger* under the coverage matrix for the authoritative gap→constraint mapping. The
+> per-gap "proposed direction (Cxx)" IDs in the body text predate promotion and may differ from
+> the final IDs.
 >
 > **Confidence markers:** `✓ verified` (CVE/standard fetched) · `~ inferred` (analysis from
 > the existing spec + domain precedent) · `? open` (design question needing a decision).
@@ -20,8 +24,8 @@
 
 ## 0 — What's already strong (so we don't re-litigate it)
 
-The existing 27 constraints already give the vault a security posture stronger than most free
-managers on the dimensions they cover: AEAD-at-rest (C1), enforced Argon2id **floor** (C2),
+The 27 constraints in place at the time of this audit (34 since the 2026-06-10 promotion) already
+give the vault a security posture stronger than most free managers on the dimensions they cover: AEAD-at-rest (C1), enforced Argon2id **floor** (C2),
 audited-libraries-only (C3), age-style envelope (C4–C6), KDBX-style header integrity (C7–C10),
 zeroize/mlock/clipboard-clear/constant-time/auto-lock (C11–C13, C25), hardware factors
 (C14–C15), rollback detection (C16), single opaque blob + zero plaintext (C17–C19),
@@ -39,23 +43,34 @@ data-integrity, distribution trust, and project governance* — exactly the cate
 
 | # | Gap area | Closest existing constraint | Verdict | Severity |
 |---|---|---|---|---|
-| A1 | KDF parameter **ceiling** (memory-DoS / integer overflow on open) | C2 (floor only), C8 (reads verbatim) | **GAP** | High |
-| A2 | Terminal / ANSI escape injection on display (`ls`, `get`) | — | **GAP** | High |
-| A3 | CSV / formula injection on `export` | C21 (export) | **GAP** | High |
-| A4 | Parser fuzzing & memory-safety on malformed/hostile vault files | C3 (libs), C7–C10 (format) | **GAP** | High |
-| B1 | Secrets on argv / shell history / process list | C20 example actively violates this | **GAP** | High |
-| B2 | Clipboard capture: history managers + OS cloud-clipboard sync | C13 (clears after timeout) | **PARTIAL** | Med-High |
-| B3 | Live process memory read via ptrace/debugger (same-uid) | C25 (core dumps only) | **PARTIAL** | Med |
-| C1 | Atomic writes + file locking (crash/concurrent-write corruption) | C17 (single blob) | **GAP** | High |
-| C2 | Secure deletion / crypto-shredding semantics on `rm` & rotation | C4 (data key) | **GAP/UNSPEC** | Med |
-| C3 | Recovery from forgotten password / all-factors-lost | C5 (multi-stanza) | **PARTIAL** | Med |
-| D1 | Reproducible builds + signed releases (SLSA / sigstore) | C20 (build), C24 (audit) | **GAP** | High |
-| D2 | Dependency vetting depth (cargo-vet, SBOM, dep budget) | C3, C24 (audit/deny) | **PARTIAL** | Med |
-| E1 | Post-quantum posture + crypto-agility statement | C7 (versioned format) | **NOTE/PARTIAL** | Low-Med |
-| E2 | Unicode normalization of the master password | C2 (KDF) | **GAP** | Med |
-| F1 | Coordinated vulnerability disclosure policy (SECURITY.md) | C24 (OSS) | **GAP** | High (governance) |
-| F2 | Formal threat model document (STRIDE / attack trees) | research taxonomy | **PARTIAL** | Med |
-| F3 | Independent security audit before v1.0 | spec checklist | **NOTED** | High |
+| A1 | KDF parameter **ceiling** (memory-DoS / integer overflow on open) | C2 (floor only), C8 (reads verbatim) | **PROMOTED → C2 ceiling** | High |
+| A2 | Terminal / ANSI escape injection on display (`ls`, `get`) | — | **PROMOTED → C28** | High |
+| A3 | CSV / formula injection on `export` | C21 (export) | **PROMOTED → C29** | High |
+| A4 | Parser fuzzing & memory-safety on malformed/hostile vault files | C3 (libs), C7–C10 (format) | **PROMOTED → C30** | High |
+| B1 | Secrets on argv / shell history / process list | C20 example actively violated this | **PROMOTED → C31** | High |
+| B2 | Clipboard capture: history managers + OS cloud-clipboard sync | C13 (clears after timeout) | **PROMOTED → C33** | Med-High |
+| B3 | Live process memory read via ptrace/debugger (same-uid) | C25 (core dumps only) | **PARTIAL** *(Part 2)* | Med |
+| C1 | Atomic writes + file locking (crash/concurrent-write corruption) | C17 (single blob) | **PROMOTED → C32** | High |
+| C2 | Secure deletion / crypto-shredding semantics on `rm` & rotation | C4 (data key) | **GAP/UNSPEC** *(Part 2)* | Med |
+| C3 | Recovery from forgotten password / all-factors-lost | C5 (multi-stanza) | **PARTIAL** *(Part 2)* | Med |
+| D1 | Reproducible builds + signed releases (SLSA / sigstore) | C20 (build), C24 (audit) | **PROMOTED → C34** | High |
+| D2 | Dependency vetting depth (cargo-vet, SBOM, dep budget) | C3, C24 (audit/deny) | **PARTIAL** *(Part 2)* | Med |
+| E1 | Post-quantum posture + crypto-agility statement | C7 (versioned format) | **NOTE/PARTIAL** *(Part 2)* | Low-Med |
+| E2 | Unicode normalization of the master password | C2 (KDF) | **PROMOTED → C2 (NFC)** | Med |
+| F1 | Coordinated vulnerability disclosure policy (SECURITY.md) | C24 (OSS) | **ADDRESSED** (SECURITY.md shipped) | High (governance) |
+| F2 | Formal threat model document (STRIDE / attack trees) | research taxonomy | **ADDRESSED** (docs/THREAT_MODEL.md) | Med |
+| F3 | Independent security audit before v1.0 | spec checklist | **RELEASE GATE** (ROADMAP M10) | High |
+
+### Promotion ledger (2026-06-10)
+
+Maintainer-approved promotion of the high-severity set into `vault_intent.yaml` ("Part 1"):
+**A1 → C2 (ceiling)** and **E2 → C2 (NFC)** were folded into the existing KDF constraint;
+**A2 → C28**, **A3 → C29**, **A4 → C30**, **B1 → C31**, **C1 → C32**, **B2 → C33**, **D1 → C34**
+were added under the new group **G11** (C28–C30) and existing groups G4/G6/G8/G9.
+The constraint count moved from 27 to 34. The proposed IDs below (written before promotion) are
+therefore historical placeholders; the mapping above is authoritative.
+The rows still marked *(Part 2)* — B3, C2, C3, D2, E1 — remain open findings; each lands via its
+own ADR per [GOVERNANCE.md](../GOVERNANCE.md) (see ROADMAP M9).
 
 ---
 
@@ -280,6 +295,10 @@ A natural grouping is a new **G11 — "Robustness & untrusted-input handling"** 
 extending **G4** for B2/B3, **G8** for B1/C3/E2, and a new **G12 — "Distribution & governance
 trust"** (D1–D2, F1–F3). Counts and segmentation would update accordingly — *pending approval.*
 
+> **Resolution (2026-06-10):** approved with a slightly different grouping — G11 took the
+> input/output items (A2→C28, A3→C29, A4→C30); the rest landed in existing groups (B1→C31 in G8,
+> C1→C32 in G6, B2→C33 in G4, D1→C34 in G9) and no G12 was created. See the Promotion ledger.
+
 ---
 
 ## Sources Index
@@ -300,8 +319,9 @@ trust"** (D1–D2, F1–F3). Counts and segmentation would update accordingly �
 
 ---
 
-*Compiled June 2026. Audits the 27-constraint `vault_intent.yaml` for uncovered attack surface
-across untrusted-input handling, secret-exposure side channels, data integrity, supply-chain
-trust, crypto longevity, and project governance. CVE/standard precedents fetched and quoted;
-spec-internal analysis marked `~ inferred`. All items are findings — no constraints added to
-`vault_intent.yaml` without explicit approval.*
+*Compiled June 2026 against the then-27-constraint `vault_intent.yaml`; audits uncovered attack
+surface across untrusted-input handling, secret-exposure side channels, data integrity,
+supply-chain trust, crypto longevity, and project governance. CVE/standard precedents fetched and
+quoted; spec-internal analysis marked `~ inferred`. All items are findings — no constraints are
+added to `vault_intent.yaml` without explicit approval. The high-severity subset was approved and
+promoted on 2026-06-10 (see the Promotion ledger above); the spec now has 34 constraints.*

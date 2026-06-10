@@ -11,6 +11,10 @@ community grows.
 2. **Decide before you build.** Significant design decisions are agreed (as a constraint or an ADR)
    *before* implementation.
 3. **Everything verifiable.** Claims are backed by tests; decisions are backed by written rationale.
+4. **Eyes beyond the maintainers.** Two-maintainer sign-off is the same two people; we treat that
+   honestly as a floor, not as independent review. Crypto and format changes actively solicit
+   external (non-maintainer) review as the community grows, and an **independent security audit is
+   a hard release gate for v1.0** (see [ROADMAP.md](ROADMAP.md) M10) — no audit, no 1.0.
 
 ## Decision tiers
 

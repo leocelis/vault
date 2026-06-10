@@ -14,7 +14,12 @@ pub enum RollbackCheck {
     Ok,
     /// `payload_version < last_seen` — the backend may have served an older copy. Abort unless the
     /// user explicitly allows it (and never prompt on a non-TTY — abort with exit code 2).
-    Regressed { expected: u64, got: u64 },
+    Regressed {
+        /// The locally-anchored last-seen version (the minimum we expected).
+        expected: u64,
+        /// The version found in the decrypted payload.
+        got: u64,
+    },
 }
 
 /// Compare a decrypted vault version against the locally-anchored last-seen value (constraint C16).

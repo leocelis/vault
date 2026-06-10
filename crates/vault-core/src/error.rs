@@ -29,9 +29,10 @@ pub enum Error {
     #[error("header tampered or wrong password")]
     HeaderAuth,
 
-    /// KDF parameters were below the enforced floor or above the safe ceiling
-    /// (constraint C2; ceiling is coverage-gap A1).
-    #[error("KDF parameters are outside the safe range (possible hostile or corrupt file)")]
+    /// KDF parameters exceed the enforced ceiling, or the KiB→bytes math overflows —
+    /// never legitimate; rejected before any allocation (constraint C2 ceiling).
+    /// Below-floor params are NOT this error: they trigger a warning + upgrade prompt (C2).
+    #[error("KDF parameters exceed safe limits — possible hostile or corrupt file")]
     KdfParamsOutOfRange,
 
     /// An authentication tag on the encrypted body failed (constraints C1, C10).

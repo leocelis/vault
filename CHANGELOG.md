@@ -9,7 +9,7 @@ All notable changes to this project are documented here. The format is based on
 ### Added
 - Open-source project scaffolding: governance, security policy, CI/security automation,
   documentation skeleton, and the `vault-core` / `vault-cli` / `vault-hardware` workspace.
-- Intent specification with 27 constraints across 10 groups ([vault_intent.yaml](vault_intent.yaml)),
+- Intent specification with 34 constraints across 11 groups ([vault_intent.yaml](vault_intent.yaml)),
   including AI-era hardening (CSPRNG generation `C26`, model-blind delivery `C27`).
 - Research foundation: security spec, AI-era offensive-LLM threat landscape, a security
   coverage-gap analysis, and a UI-architecture study ([research/](research/)).
@@ -26,6 +26,22 @@ All notable changes to this project are documented here. The format is based on
 - Intent **v1.1.0**: fixed `C1`/`C8` XChaCha20 keystream reuse across saves via a per-body-write
   `nonce_prefix` HKDF salt (with conflict resolution `SC6`); fixed the SLSA provenance job in
   `release.yml`.
+
+### Security (2026-06-10 spec-hardening pass — pre-implementation)
+- Promoted the high-severity coverage gaps to enforced constraints: terminal output sanitization
+  (`C28`), export/CSV-injection hardening (`C29`), parser robustness with `forbid(unsafe_code)` +
+  CI fuzzing (`C30`), no secrets on argv (`C31`), atomic durable saves with locking (`C32`),
+  clipboard concealment (`C33`), and reproducible/signed releases with provenance (`C34`).
+- Folded a KDF parameter **ceiling** (anti-DoS, checked arithmetic) and **Unicode NFC**
+  normalization of the master password into `C2`.
+- Resolved spec self-contradictions: `C19` inner-stream key is regenerated per **save** (not per
+  open) with an honest in-memory-protection rationale; `C5` documents the YubiKey
+  device-at-save coupling with a graceful abort; `C12` scopes mlock to long-lived secrets with a
+  once-per-process warning; `C16` documents the fresh-device trust-on-first-use limitation;
+  `C20`'s acceptance test no longer passes a password on argv; `C27` states explicitly what
+  model-blind delivery does and does not defend against.
+- Constraint count 27 → 34; groups 10 → 11 (new `G11` — untrusted input/output robustness);
+  satisfiability conflicts 5 → 7 (`SC6`, `SC7`).
 
 ### Notes
 - This project is **pre-alpha**. No functional release exists yet; do not store real secrets.

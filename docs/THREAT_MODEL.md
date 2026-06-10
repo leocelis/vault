@@ -23,14 +23,14 @@
 | **Offline brute-forcer** | Has the stolen blob; rents GPUs | Argon2id (floor enforced); XChaCha20-Poly1305; CSPRNG-generated passwords | C1, C2, C26 |
 | **Malicious / compromised sync backend** | Serves, withholds, reorders, or rolls back the file | STREAM segment-binding; keyed header HMAC; monotonic counter + local anchor | C9, C10, C16 |
 | **Passive file observer** | Reads the blob at rest | Single opaque blob; zero plaintext metadata | C17, C18, C19 |
-| **Host malware / infostealer** | Same-user process; reads memory, swap, clipboard | `zeroize` + `mlock`; core-dump off; clipboard auto-clear; auto-lock; anti-ptrace* | C11–C13, C25 |
+| **Host malware / infostealer** | Same-user process; reads memory, swap, clipboard | `zeroize` + `mlock`; core-dump off; clipboard auto-clear + concealment; auto-lock; anti-ptrace* | C11–C13, C25, C33 |
 | **Evil-maid** | Physical access between uses | Keyed HMAC (KDF-downgrade detection); TPM PCR sealing* | C9, C15 |
-| **AI-orchestrated attacker** | Frontier LLM drives recon→exfil; agentic tools | Zero metadata to recon; model-blind secret delivery; no secrets on argv* | C17, C18, C27 |
-| **Supply-chain attacker** | Compromises a dependency or the release pipeline | Audited-libs-only; `cargo audit`/`deny`/`vet`; reproducible + signed releases* | C3, C24 |
-| **Hostile-file attacker** | Hands you a crafted vault file | Parser fuzzing*; KDF parameter ceiling*; bounded allocations | C7–C10 |
+| **AI-orchestrated attacker** | Frontier LLM drives recon→exfil; agentic tools | Zero metadata to recon; model-blind secret delivery; no secrets on argv; sanitized output | C17, C18, C27, C28, C31 |
+| **Supply-chain attacker** | Compromises a dependency or the release pipeline | Audited-libs-only; `cargo audit`/`deny` (`vet`*); reproducible + signed releases | C3, C24, C34 |
+| **Hostile-file attacker** | Hands you a crafted vault file | Parser fuzzing; KDF parameter ceiling; bounded allocations | C2, C7–C10, C30 |
 
 `*` = partially covered today or proposed as a constraint in
-[research/security_coverage_gaps.md](../research/security_coverage_gaps.md) (candidate IDs C28+).
+[research/security_coverage_gaps.md](../research/security_coverage_gaps.md) (Part 2, candidate IDs C35+).
 
 ## Explicitly out of scope (residual risk)
 
@@ -40,6 +40,17 @@
 - **Coercion / rubber-hose** and **shoulder-surfing beyond auto-lock**.
 - **The human typing the master password into a phishing surface** (mitigated only indirectly by the
   zero-network design — there is no legitimate online surface to imitate).
+- **A hostile or prompt-injected agent with shell access to an unlocked session.** Model-blind
+  delivery (C27) defends against *incidental* capture — a secret landing in an agent's tool-result
+  stream or context window. An agent that can run shell commands can itself invoke
+  `vault get --stdout` or read the clipboard; it is same-user malware, bounded — not eliminated —
+  by auto-lock (C25), clipboard concealment (C33), and the timed clear (C13).
+- **Rollback against a freshly provisioned device** (C16 limitation). The first open on a machine
+  with no local state anchor is trust-on-first-use: any valid older vault is accepted and becomes
+  the anchor. `vault open --expect-min-version N` can pin expectations during provisioning; a TPM
+  NV monotonic counter is the hardened upgrade path.
+- **Clipboard managers that ignore concealment hints** (C33 limitation) — on X11 especially, any
+  client can read the clipboard during the window before the timed clear.
 
 ## What leaks even in the best case
 
@@ -54,5 +65,5 @@ entry count) and **modification timestamp**. Nothing else.
 | **T**ampering | AEAD tags; HmacBlockStream; header HMAC |
 | **R**epudiation | (Single-user, local; out of scope) |
 | **I**nformation disclosure | Zero-plaintext; zeroize/mlock; model-blind delivery |
-| **D**enial of service | KDF ceiling*; parser fuzzing*; atomic writes* |
+| **D**enial of service | KDF ceiling (C2); parser fuzzing (C30); atomic writes (C32) |
 | **E**levation of privilege | mlock; core-dump off; anti-ptrace*; memory-safe Rust |

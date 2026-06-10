@@ -10,7 +10,9 @@ pub fn dispatch(command: Command) -> Result<(), String> {
     match command {
         Command::Init { .. } => todo!("M5/M6: create vault"),
         Command::Add { .. } => todo!("M6: add entry (read secret via no-echo prompt, not argv)"),
-        Command::Get { .. } => todo!("M6: clipboard-default delivery; --stdout warned opt-in (C27)"),
+        Command::Get { .. } => {
+            todo!("M6: clipboard-default delivery; --stdout warned opt-in (C27)")
+        }
         Command::Gen { .. } => todo!("M6: CSPRNG generator with rejection sampling (C26)"),
         Command::Ls { .. } => todo!("M6: in-memory search after unlock (C18/C21)"),
         Command::Edit { .. } => todo!("M6: edit entry"),

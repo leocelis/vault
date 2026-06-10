@@ -1,4 +1,4 @@
-//! Fuzz the HmacBlockStream reader (coverage-gap A4, constraint C10).
+//! Fuzz the HmacBlockStream reader (constraints C30, C10).
 //!
 //! Stresses block-size handling, the end-of-stream marker, and truncation/duplication resistance.
 #![no_main]
