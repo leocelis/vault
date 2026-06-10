@@ -25,7 +25,7 @@ master password ──Argon2id(salt, m,t,p)──▶ master_key
                  HKDF(info="vault-pw-wrap")  ▼
                                           wrapping_key ──unwrap──▶ data_key (256-bit, random)
                                                                      │
-                          HKDF(info="vault-payload-v1")              ▼
+                          HKDF(salt=nonce_prefix, info="vault-payload-v1")   ▼
                                                               payload_key ──STREAM──▶ entries
 ```
 

@@ -45,6 +45,27 @@ jobs:
           name: dist-${{ matrix.target }}
           path: dist/
 
+  hashes:
+    # Matrix job outputs overwrite each other, so subjects are computed here from the
+    # combined artifacts instead of per-target in `build` (also keeps sha256sum/base64
+    # semantics uniform: ubuntu only). Format per slsa-github-generator generic builder:
+    # base64-encoded `sha256sum` output, one "<hash> <name>" line per artifact.
+    name: combine artifact hashes (SLSA subjects)
+    needs: build
+    runs-on: ubuntu-latest
+    outputs:
+      hashes: ${{ steps.hash.outputs.hashes }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: dist, merge-multiple: true }
+      - name: Compute combined SHA-256 subjects
+        id: hash
+        run: |
+          cd dist
+          hashes=$(sha256sum * | base64 -w0)
+          [ -n "$hashes" ]  # UC-13 §6: subjects must be non-empty
+          echo "hashes=${hashes}" >> "$GITHUB_OUTPUT"
+
   sign-and-publish:
     name: sign (cosign) + provenance + publish
     needs: build
@@ -73,11 +94,11 @@ jobs:
 
   provenance:
     name: SLSA build provenance
-    needs: [build, sign-and-publish]
+    needs: [hashes, sign-and-publish]
     permissions:
       actions: read
       id-token: write
       contents: write
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.0.0
     with:
-      base64-subjects: "${{ needs.build.outputs.hashes }}"
+      base64-subjects: "${{ needs.hashes.outputs.hashes }}"

@@ -1,0 +1,158 @@
+# cowork.yaml — Two-maintainer / two-agent collaboration protocol
+#
+# Audience: the AI agents (and humans) working on this repo. Both maintainers develop
+# with an AI coding agent; this file is the contract that keeps the two lanes from
+# colliding and keeps main always green. Agents MUST read this file at session start
+# (the repo CLAUDE.md points here).
+#
+# Precedence: vault_intent.yaml (constraints) > docs/specs/ (designs) > ROADMAP.md
+# (ordering) > this file (process). GOVERNANCE.md governs decisions; this file only
+# operationalizes it.
+
+version: 1
+
+maintainers:
+  - github: leocelis
+    lane: A
+    scope_default: "security boundary — vault-core (format, crypto, memory, rollback)"
+  - github: jgm972
+    lane: B
+    scope_default: "CLI surface, utilities, importers, helper processes, docs"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 1. Source-of-truth rules (what an agent reads BEFORE writing code)
+# ──────────────────────────────────────────────────────────────────────────────
+before_any_work:
+  - "git fetch origin && git rebase origin/main  (start from current main, always)"
+  - "Read vault_intent.yaml constraints for the area you will touch (IVD Rule 1)."
+  - "Read the governing spec in docs/specs/ for the use case you are implementing."
+  - "Check the claim board (see §3) — do not start unclaimed-by-you work in a path
+     owned by the other lane."
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 2. Branch & sync model (trunk-based, short-lived branches)
+# ──────────────────────────────────────────────────────────────────────────────
+branching:
+  main_branch: main
+  rule: "main is the integration branch and MUST always pass `just ci`."
+  work_branches:
+    pattern: "<lane>/<topic>"        # examples: a/format-header, b/gen-rejection-sampling
+    lifetime: "short — target one focused PR per branch; delete after merge"
+  forbidden:
+    - "force-push to main (ever)"
+    - "long-lived divergent branches (> ~10 commits behind main = rebase now)"
+    - "committing directly to main for anything that touches crates/vault-core/,
+       vault_intent.yaml, the file format, SECURITY.md, or .github/workflows/
+       (CODEOWNERS + GOVERNANCE tiers require PR review there)"
+  allowed_direct_to_main:
+    - "docs typo-level fixes outside the protected paths, at maintainer discretion"
+
+sync_protocol:
+  start_of_session: "git fetch && git rebase origin/main onto your work branch"
+  before_push: "rebase on origin/main again; resolve locally; run `just check`"
+  merge_style: "rebase-merge or squash — keep main history linear"
+  after_merge: "the OTHER lane rebases its open branches onto new main within its
+                next session start (this is what keeps both in sync)"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 3. Collision avoidance — ownership map + claim protocol
+# ──────────────────────────────────────────────────────────────────────────────
+ownership:
+  # Default owner per path. The owner's lane may edit freely on its branches;
+  # the other lane needs a claim (below) or a PR reviewed by the owner.
+  "crates/vault-core/":            lane_A
+  "fuzz/":                         lane_A
+  "crates/vault-cli/":             lane_B
+  "crates/vault-hardware/":        lane_B   # implementation; design review by lane A
+  "docs/specs/":                   shared_read_only   # changes via PR + both maintainers
+  "docs/":                         lane_B_default
+  "research/":                     shared_read_only
+  ".github/workflows/":            lane_A
+  "tests/constraint_coverage.rs":  "whoever implements the constraint flips its test"
+
+locked_files:
+  # Changes here REQUIRE a PR approved by BOTH maintainers (GOVERNANCE two-maintainer tier).
+  - vault_intent.yaml
+  - docs/FILE_FORMAT.md
+  - docs/THREAT_MODEL.md
+  - SECURITY.md
+  - GOVERNANCE.md
+  - cowork.yaml
+
+shared_hotspots:
+  # Files both lanes legitimately touch — keep edits surgical and merge fast.
+  - file: Cargo.toml             # workspace deps
+    rule: "one dependency addition per PR; never reorder existing entries"
+  - file: CHANGELOG.md
+    rule: "append-only under [Unreleased]; one line per PR, added in that PR"
+
+claims:
+  where: "GitHub issues — one issue per ROADMAP item (CP-x / S-x / G0.x)"
+  how:
+    - "Assign yourself to the issue BEFORE starting; label it lane:A or lane:B."
+    - "One issue = one branch = one PR. Reference the issue in the PR."
+    - "Cross-lane work (touching the other lane's paths): comment on the issue and
+       wait for the owner's 👍 before pushing changes to those paths."
+  release: "Unassign or close if you stop; stale claims (> 2 weeks silent) are fair game
+            after a ping."
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 4. Agent conduct rules (IVD-bound)
+# ──────────────────────────────────────────────────────────────────────────────
+agent_rules:
+  - id: AG1
+    rule: "Intent before implementation: read the constraint(s) and the spec for the
+           area being changed; for 3+ constraints implement segment-by-segment,
+           re-reading constraints from disk between segments (IVD Rule 1)."
+  - id: AG2
+    rule: "Post-implementation audit: before the PR is marked ready, re-read the
+           constraints from disk and include a PASS / FAIL / NEEDS_REVIEW table in
+           the PR description for every constraint touched (IVD Rule 2)."
+  - id: AG3
+    rule: "Never weaken, delete, or work around a constraint to make code pass.
+           Constraint conflicts go to a Gate-0-style intent amendment, not code."
+  - id: AG4
+    rule: "Secret-handling code rules from CONTRIBUTING.md are non-negotiable:
+           no custom crypto, no unsafe outside the FFI module, no Vec<u8>/String for
+           secrets, no == on secret bytes, no secrets on argv, no secret in any log."
+  - id: AG5
+    rule: "Run `just check` (fmt + clippy -D warnings + tests) before every push.
+           Never push red."
+  - id: AG6
+    rule: "Do not commit or push without the human maintainer's instruction in that
+           session. Never force-push. Never rewrite published history."
+  - id: AG7
+    rule: "Do not edit files outside your lane's ownership without a claim (§3).
+           If a needed change lands in the other lane's path, stop and surface it."
+  - id: AG8
+    rule: "New external dependency? It must pass the deny.toml license allowlist and
+           be justified in the PR description (supply-chain surface is a constraint,
+           C3/C24). When in doubt, vendor nothing — propose first."
+  - id: AG9
+    rule: "Anything you could not verify (a citation, a platform behavior, a crate
+           capability) is marked 'unverified' in code comments/PR — never asserted."
+  - id: AG10
+    rule: "No PII, no private-tooling references, no internal pipeline metadata in
+           any committed artifact. Public handles and public repo URLs only."
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 5. PR checklist (both lanes, enforced by review)
+# ──────────────────────────────────────────────────────────────────────────────
+pr_checklist:
+  - "References its ROADMAP item / issue (CP-x, S-x, G0.x)"
+  - "Constraint table (AG2) present if any constraint is touched"
+  - "Tests added or constraint_coverage.rs placeholder flipped where applicable"
+  - "`just ci` green; no new clippy allows without justification"
+  - "CHANGELOG.md line added"
+  - "Review tier respected: lazy consensus (docs/tests) · code-owner (vault-core,
+     workflows) · two-maintainer (crypto, format, intent, SECURITY.md)"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 6. Sync points (from ROADMAP.md — both maintainers required, in order)
+# ──────────────────────────────────────────────────────────────────────────────
+sync_points:
+  - "SP1: Gate 0 intent amendments signed off (G0.1–G0.6) — blocks all CP work"
+  - "SP2: CP-1 format freeze — byte layout + format API stable; Lane B may build
+     importers/CLI against it"
+  - "SP3: CP-4 core API freeze — full vault-core public API stable; CLI integration"
+  - "SP4: CP-7 joint IVD Rule 2 audit before the external audit"

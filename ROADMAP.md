@@ -1,51 +1,119 @@
 # Roadmap
 
-Vault is implemented **by constraint segment**, in the order defined by the IVD segmentation plan
-in [`vault_intent.yaml`](vault_intent.yaml). Each milestone is "done" only when its constraints'
-tests pass.
+No dates, no timeline — **dependency order only**. Two kinds of work:
 
-## Milestones
+- **Critical path (CP)** — strictly ordered; each node blocks the next. This is the spine of v1.0.
+- **Sidequests (S)** — parallel-safe utilities. Each lists what unblocks it; once unblocked, it can
+  be built independently of the critical path without touching the same files.
 
-### M0 — Research & specification ✅
-- Security research foundation ([research/](research/))
-- Intent specification: 27 constraints, 10 groups ([vault_intent.yaml](vault_intent.yaml))
-- AI-era threat landscape + coverage-gap analysis
+This split exists so two maintainers (and their agents) can work **in parallel without collisions**
+— see [`cowork.yaml`](cowork.yaml) for the working protocol and
+[`docs/specs/`](docs/specs/README.md) for the design of every item below. Legacy milestone tags
+(M2…M10) are kept in parentheses because the PRD and specs reference them.
 
-### M1 — Open-source scaffolding ✅ *(this milestone)*
-- Repository structure, governance, CI/security automation, docs skeleton
+Done so far: research & intent (M0 ✅), OSS scaffolding (M1 ✅), PRD + 16 tech specs ✅.
 
-### M2 — File format core *(next)*
-- `C7`–`C10`: magic/version, KDF-params block, header integrity (SHA-256 + HMAC), HmacBlockStream
-- Serialization round-trip tests; **fuzz harnesses** for every parser
-- `docs/FILE_FORMAT.md` finalized
+---
 
-### M3 — Cryptographic core
-- `C1`–`C6`: XChaCha20-Poly1305 STREAM, Argon2id (floor **and** ceiling), HKDF, data key, envelope, FIDO2 PRF
-- `cargo audit` / `cargo deny` green
+## Gate 0 — Intent decisions before any crypto/format code
 
-### M4 — Memory & runtime hardening
-- `C11`–`C13`, `C25`: zeroize, mlock, clipboard auto-clear, constant-time, core-dump-off, auto-lock, anti-ptrace
+Spec-writing surfaced issues that must be resolved as **intent amendments first** (both
+maintainers, per [GOVERNANCE](GOVERNANCE.md) two-maintainer rule). Small, but they gate everything:
 
-### M5 — Vault read/write & rollback
-- `C4`, `C5`, `C16`: open/save, password rotation, monotonic counter + local anchor
-- **Atomic writes + file locking** (crash safety)
+| # | Decision | Found in | Proposed resolution |
+|---|----------|----------|---------------------|
+| G0.1 | **C1 keystream reuse across re-saves** — same data key + deterministic nonces ⇒ XOR of two saved versions leaks plaintext diffs | [UC-07 §7](docs/specs/UC-07-untrusted-storage-sync.md) | ✅ Amended (intent v1.1.0): per-body-write `nonce_prefix` HKDF salt + SC6 — pending second-maintainer review |
+| G0.2 | **C9/C10 HMAC key source** — header/block HMACs keyed from Argon2id `master_key`, which a hardware-only unlock never derives | [UC-10 §7](docs/specs/UC-10-hostile-file-parsing.md) | Key HMACs from a `data_key`-derived key (HKDF, new info string) |
+| G0.3 | **`upgrade-kdf` rollback blind spot** — header-only ops don't bump `vault_version`; backend can serve the weaker-KDF file undetected | [UC-11 §7](docs/specs/UC-11-kdf-calibration.md) | Make KDF upgrade a full save (version bump) |
+| G0.4 | **Promote C28+ candidates** — KDF ceiling (A1), no-secrets-on-argv (B1, drafted in UC-05), ANSI-safe output (A2) | [gaps doc](research/security_coverage_gaps.md) | Add as C28/C29/C30 with tests |
+| G0.5 | **`release.yml` provenance bug** — SLSA job reads `needs.build.outputs.hashes`; build job defines no outputs | [UC-13 §3.2](docs/specs/UC-13-verifiable-releases.md) | ✅ Fixed: dedicated `hashes` job computes combined SLSA subjects |
+| G0.6 | **C13 thread → helper process** — clear-timer "thread" can't outlive a one-shot CLI | [UC-04 §7](docs/specs/UC-04-model-blind-retrieval.md) | Amend C13 wording to permit the detached holder process |
 
-### M6 — CLI surface
-- `C20`–`C22`, `C26`, `C27`: init/add/get/ls/edit/rm/export/import/tune/**gen**, clipboard-default + `--stdout` opt-in
-- **No secrets on argv**
+---
 
-### M7 — Hardware & OS-keystore stanzas *(optional)*
-- `C14`, `C15`: FIDO2 (libfido2), TPM 2.0 (with re-enrollment); macOS Secure Enclave / Windows DPAPI
+## Critical path
 
-### M8 — Distribution & trust
-- Reproducible builds, Sigstore/cosign signing, SLSA provenance, SBOM (`docs/VERIFYING_RELEASES.md`)
+Each node lists its constraints, spec, and **the interface it freezes** — the contract the other
+lane can build against from that point on.
 
-### M9 — Hardening backlog (candidate constraints C28+)
-- From [research/security_coverage_gaps.md](research/security_coverage_gaps.md): KDF ceiling, output/CSV
-  sanitization, Unicode normalization, recovery codes, clipboard cloud-sync exclusion, PQ posture
+### CP-1 · File format core *(M2)*
+`C7 C8 C9 C10` · specs [UC-03](docs/specs/UC-03-store-secret.md), [UC-10](docs/specs/UC-10-hostile-file-parsing.md)
+- Header parse/serialize (magic, version, KDF params, stanza records; bounded reads, length caps)
+- Bounded **TLV entry/payload model** (tag bit 0x8000 = Protected)
+- HmacBlockStream framing; 10-step verification pipeline order
+- Fuzz targets live: `header_parse`, `stanza_parse`, `block_stream`
+- **Freezes:** on-disk byte layout · `Header`/`Entry`/`Stanza` types · `vault-core::format` API
 
-### M10 — Independent security audit → v1.0
-- Third-party audit (format/parser, KDF, memory, hardware FFI, AI-era delivery), then **1.0.0**
+### CP-2 · Cryptographic core *(M3)*
+`C1 C2 C3 C4 C5 C6` (as amended by Gate 0) · specs [UC-01](docs/specs/UC-01-install-and-init.md), [UC-11](docs/specs/UC-11-kdf-calibration.md)
+- Argon2id (floor **and** ceiling) → HKDF; XChaCha20-Poly1305 STREAM (64 KiB chunks)
+- Data-key generation; password-stanza wrap/unwrap; envelope open (any-of-N)
+- **Freezes:** `vault-core::crypto` API · `Vault::open`/`Vault::save` signatures
+
+### CP-3 · Memory & runtime hardening *(M4)*
+`C11 C12 C25` · spec [UC-14](docs/specs/UC-14-runtime-hardening.md)
+- Type layer (zeroize/secrecy, Debug redaction) · page layer (mlock, `memfd_secret` probe)
+- Process layer (RLIMIT_CORE=0, dumpable-off) · constant-time comparisons table
+- **Freezes:** `vault-core::memory` secret types used by every later component
+
+### CP-4 · Vault read/write, rollback, atomic saves *(M5)*
+`C4 C16 C17` · specs [UC-07](docs/specs/UC-07-untrusted-storage-sync.md), [UC-01 §atomic](docs/specs/UC-01-install-and-init.md)
+- Open pipeline wired end-to-end; atomic temp+rename+fsync saves; file locking
+- Rollback anchor (per-`vault_id` u64, LocalAppData/XDG, flock + re-read) · `--allow-rollback` · exit 2
+- **Freezes:** the full `vault-core` public API (v0 API freeze — the big sync point)
+
+### CP-5 · CLI core loop *(M6)*
+`C20 C21 C22 C27ᵈᵉᶠᵃᵘˡᵗ` · specs [UC-01](docs/specs/UC-01-install-and-init.md), [UC-04](docs/specs/UC-04-model-blind-retrieval.md), [UC-06](docs/specs/UC-06-entry-management.md)
+- `init` (≤5 prompts) · `add` · `get` (clipboard default) · `ls --search` · `edit` (field-by-field) · `rm` · `lock`
+- Non-TTY behavior matrix; no secrets on argv; musl static build verified
+- **Freezes:** CLI surface & exit codes (scripts can rely on them)
+
+### CP-6 · Distribution & trust *(M8)*
+`C24 C23 C3` · spec [UC-13](docs/specs/UC-13-verifiable-releases.md)
+- Reproducible builds (`--locked`, remap-path-prefix) · cosign keyless · SLSA provenance (fixed per G0.5)
+- `cargo auditable` embedded SBOM + CycloneDX sidecar · crates.io Trusted Publishing
+
+### CP-7 · Full IVD audit → external audit → v1.0 *(M10)*
+- IVD Rule 2 sweep: 27+ constraints, PASS/FAIL/NEEDS_REVIEW, `tests/constraint_coverage.rs` all green
+- Independent third-party audit (format/parser, KDF, memory, hardware FFI, AI-era delivery) → **1.0.0**
+
+---
+
+## Sidequests (parallel-safe)
+
+| ID | Sidequest | Spec | Unblocked by | Notes |
+|----|-----------|------|--------------|-------|
+| S-1 | **Clipboard-holder helper process** (X11/Wayland/macOS/Windows, history-suppression hints, clear-iff-unchanged) | [UC-04](docs/specs/UC-04-model-blind-retrieval.md) | nothing | Standalone binary/crate; the flagship's engine |
+| S-2 | **`vault gen`** — rejection sampling, charsets, EFF wordlist embedding, chi-square test harness | [UC-02](docs/specs/UC-02-csprng-generation.md) | nothing | Pure function + CLI glue later |
+| S-3 | **zxcvbn entropy warning** (60-bit floor, warn-don't-block) | [UC-02](docs/specs/UC-02-csprng-generation.md) | nothing | Wraps the zxcvbn crate |
+| S-4 | **`vault tune`** — RFC 9106 memory-first proportional scaling, median-of-3 | [UC-11](docs/specs/UC-11-kdf-calibration.md) | CP-2 (kdf fn) | Benchmark harness can start against raw argon2 |
+| S-5 | **Import parsers** — txt, JSON, Bitwarden JSON, KeePassXC CSV (+ M9: kdbx via `keepass`, pass via gpg subprocess) | [UC-12](docs/specs/UC-12-migration-import.md) | CP-1 (Entry model) | Each format = one PR; fuzz each parser |
+| S-6 | **`vault export` + `--stdout` plumbing** — warning strings, non-TTY matrix, `--password-fd/stdin` | [UC-05](docs/specs/UC-05-script-and-ci-output.md) | CP-5 partially | Spec is final; warning text is frozen |
+| S-7 | **`vault merge`** — UUID union, `modified_at` tiebreak, masked diffs (8-bullet Protected) | [UC-08](docs/specs/UC-08-conflict-merge.md) | CP-4 | Needs read/write API |
+| S-8a | **FIDO2 stanza** (libfido2 raw CTAP2) | [UC-09](docs/specs/UC-09-hardware-factors.md) | CP-2 (stanza API) | Optional for v1 (M7) |
+| S-8b | **YubiKey CR stanza** (+ graceful-staleness) | [UC-09](docs/specs/UC-09-hardware-factors.md) | CP-2 | Optional |
+| S-8c | **TPM stanza** (PCR 7, re-enroll flow) | [UC-09](docs/specs/UC-09-hardware-factors.md) | CP-2 | Optional |
+| S-8d | **macOS SE / Windows DPAPI stanzas** | [UC-09](docs/specs/UC-09-hardware-factors.md) | CP-2 | Optional |
+| S-9 | **Disclosure ops** — publish age intake key, triage runbook, severity modifier table | [UC-15](docs/specs/UC-15-vulnerability-reporting.md) | nothing | Process work, zero code |
+| S-10 | **Auto-lock & config** — `~/.vault.toml` schema, idle timer | [UC-06](docs/specs/UC-06-entry-management.md) | CP-3 | Small |
+| S-11 | **Fuzz corpus & CI fuzz budget** — seed corpora from real vault files, OSS-Fuzz application | [UC-10](docs/specs/UC-10-hostile-file-parsing.md) | CP-1 | Grows with every parser |
+| S-12 | **Padmé padding exploration** (PURBs) — size-leak reduction, default-off | [UC-07 §7](docs/specs/UC-07-untrusted-storage-sync.md) | CP-4 | v2 candidate, research-first |
+| S-13 | **Agent interface exploration** — handle broker, `vault_use`, OS approval gate | [UC-16](docs/specs/UC-16-agent-interface-future.md) | post-v1 | DESIGN EXPLORATION; never returns plaintext to a model (C27) |
+| S-14 | **User guide & website docs** | all specs | CP-5 | Quickstart, sync guide, threat-model-for-humans |
+
+---
+
+## Suggested parallel lanes
+
+Per [CODEOWNERS](.github/CODEOWNERS), `vault-core` changes need the code owner's review; the split
+below keeps review load natural. Lanes are a default, not a law — swap via the claim protocol in
+[`cowork.yaml`](cowork.yaml).
+
+- **Lane A (code owner):** Gate 0 amendments → CP-1 → CP-2 → CP-3 → CP-4 (the security boundary).
+- **Lane B:** S-1, S-2, S-3, S-9 immediately (zero dependencies); then S-4/S-5 as CP-1/CP-2 freeze
+  interfaces; then CP-5 CLI against the frozen core API; S-6/S-7/S-10 behind it.
+- **Sync points:** ① Gate 0 sign-off (both) · ② CP-1 format freeze · ③ CP-4 core API freeze ·
+  ④ CP-7 audit (both).
 
 ## Out of scope for v1
 
@@ -58,3 +126,4 @@ Vault's audience protects more than passwords — files, `.env`s, code, database
 secrets their AI tools touch. Expanding from "credential vault" to "developer secret vault"
 (file/blob encryption, secret injection into running apps without exposing plaintext to an agent)
 is the north star, scoped deliberately *after* the credential core is audited and solid.
+S-13 is the first concrete step in that direction.
