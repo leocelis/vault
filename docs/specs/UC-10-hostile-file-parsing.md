@@ -9,7 +9,7 @@
 The vault treats its own file as untrusted input — it arrives via sync backends, restores, and
 imports an attacker may control. This spec covers: parser hardening (bounded reads, length caps, no
 allocation before validation), the exact verification order on open, the KDF parameter **ceiling**
-(promoting gap A1 to candidate C28 with concrete values), the ambiguous-error policy, sanitization
+(gap A1 — folded into C2 as the ceiling, 2026-06-10), the ambiguous-error policy, sanitization
 of attacker-controlled bytes echoed to a terminal (gap A2 / candidate C29), and the fuzzing
 strategy for the targets already scaffolded in [`fuzz/`](../../fuzz/). Out of scope: the payload
 TLV parser (UC-03 §3.2, which runs post-authentication), rollback handling (C16, UC-7).
@@ -105,7 +105,7 @@ The C9 test "flip one bit in `m_cost` ⇒ failure faster than one Argon2id call"
 step 5 preceding step 7; the A1 attack (absurd `m_cost` with a *recomputed* `header_hash` — which
 is keyless and attacker-computable) is stopped by step 6 preceding step 7.
 
-### 3.3 KDF parameter ceiling (candidate C28)
+### 3.3 KDF parameter ceiling (C2, promoted from gap A1)
 
 Proposed normative values — already staged as constants in
 `crates/vault-core/src/crypto/mod.rs`:

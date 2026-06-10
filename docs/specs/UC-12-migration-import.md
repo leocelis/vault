@@ -82,7 +82,7 @@ either a third-party format parser with crypto (`keepass`) or an external-binary
 
 Mechanics: detect `gpg` on `PATH` (error with install guidance if absent); run
 `gpg --quiet --batch --decrypt <file>` per entry, reading plaintext from the child's stdout pipe
-directly into a `Zeroizing<Vec<u8>>` (C11). Never pass secrets on argv (coverage-gap B1), never
+directly into a `Zeroizing<Vec<u8>>` (C11). Never pass secrets on argv (C31), never
 write decrypted output to a temp file. gpg talks only to the local agent — no network (C23).
 
 ### 3.2 Input schemas (v1)

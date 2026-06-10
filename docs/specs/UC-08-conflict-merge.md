@@ -125,7 +125,7 @@ There is no stored ancestor, so this is deliberately a **two-way** merge ("three
 **per entry, not per field** — field-level cherry-picking is a v2 candidate.
 
 **Interactive masked diff.** Secret values never reach the terminal (C27 spirit; also avoids
-ANSI-injection surface, coverage-gap A2 — field *names* are ours, field *values* are sanitized
+ANSI-injection surface, constraint C28 — field *names* are ours, field *values* are sanitized
 before any display):
 
 ```
@@ -143,7 +143,7 @@ Keep [o]ld / [n]ew / [s]kip entry / newest for [a]ll remaining? [n]
   (a displayed digest would be an offline-crackable oracle). Equality/difference is computed
   in memory (constant-time, C25) and reported only as `(same)` / `(differs)`.
 - **Non-protected fields** (title, username, url, tags): shown in full — the user has already
-  unlocked both payloads; these are display-sanitized per coverage-gap A2.
+  unlocked both payloads; these are display-sanitized per constraint C28.
 - `[s]kip` keeps **both** versions: the loser is duplicated under a fresh UUID with title suffix
   `" (conflict 2026-06-08)"`, so no data is silently dropped.
 

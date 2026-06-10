@@ -14,7 +14,7 @@ default — `C27_default > C21_convenience`. This spec defines:
 - the non-TTY behavior matrix (deterministic, no prompts when piped),
 - `vault export --format json` (schema, warning, confirmation),
 - recommended CI secret-injection patterns and a possible future `vault exec`,
-- gap B1: **no secrets on argv, ever** — proposed constraint text,
+- C31 (was gap B1): **no secrets on argv, ever** — promoted 2026-06-10,
 - audit-trail position (there is none, by design — C23).
 
 Non-goals: an agent/MCP interface (UC-16, post-v1), CSV export (gap A3 — formula injection;
@@ -140,7 +140,7 @@ UC-04 §3.7 guidance. No environment auto-detection ever flips output to stdout 
   is deliberately absent in v1 — writing plaintext files ourselves invites 0644 mistakes; the
   shell redirect makes the user own the destination. (Revisit with enforced 0600 if demanded.)
 
-### 3.5 Gap B1 — no secrets on argv, ever (candidate constraint)
+### 3.5 C31 — no secrets on argv, ever (promoted from gap B1)
 
 Proposed text for promotion into the intent (numbering per maintainer; gaps doc calls it C32):
 

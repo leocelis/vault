@@ -12,7 +12,7 @@ delivered; it can never read it.** The secret travels `decrypted payload → OS 
 touching no channel an LLM ingests by default — not stdout, not a tool result, not a file.
 
 Covered here: the threat model recap, per-platform clipboard delivery (X11, Wayland, macOS,
-Windows), the auto-clear timer (C13), clipboard-history/cloud-sync suppression (gap B2),
+Windows), the auto-clear timer (C13), clipboard-history/cloud-sync suppression (C33),
 stdout/stderr channel discipline, and interaction with scrollback/transcript capture.
 The warned opt-outs (`--stdout`, export) are specified in [UC-05](UC-05-script-and-ci-output.md).
 
@@ -57,7 +57,7 @@ malware-with-root is out of scope per [THREAT_MODEL](../THREAT_MODEL.md)).
 | stdout | **Yes** (tool result) | Empty on `vault get` (C27) |
 | stderr | Usually (merged into transcript) | Human-status text only; never secret bytes |
 | Files / tempfiles | Yes (workspace reads) | No secret ever written to a file path |
-| Shell history / argv | Yes | No secrets on argv (gap B1 → UC-05 §3.5) |
+| Shell history / argv | Yes | No secrets on argv (C31 → UC-05 §3.5) |
 | OS clipboard | **No** — agents have no clipboard tool by default; reading it requires running a new program, which is a visible, auditable action | **Delivery channel** |
 
 The clipboard is not magically unreadable — it is *outside the model's default input set*, and
@@ -90,7 +90,7 @@ vault __clip-holder (hidden subcommand, same binary — C20 single static binary
 - On macOS/Windows the OS pasteboard server retains contents after the writer exits, so the
   helper's only job there is the timer; on X11/Wayland it is also the selection owner.
 - Secret handoff is via a pipe fd inherited at `fork`/`spawn` — `/proc/<pid>/cmdline` and
-  `environ` stay clean (gap B1 discipline applies to our own internals too).
+  `environ` stay clean (C31 discipline applies to our own internals too).
 
 ### 3.3 Per-platform delivery
 
@@ -125,7 +125,7 @@ retaining* the prior clipboard — arbitrary other-app data, possibly itself sen
 process built to hold exactly one secret, and it can clobber a newer user copy on a race.
 Verdict in §4; revisit post-v1 if user demand is real.
 
-### 3.5 Clipboard-history & cloud-sync suppression (gap B2)
+### 3.5 Clipboard-history & cloud-sync suppression (C33)
 
 Set together with the secret, verbatim from KeePassXC's verified implementation:
 
@@ -139,7 +139,7 @@ Set together with the secret, verbatim from KeePassXC's verified implementation:
 data-control (e.g. `cliphist`) and non-compliant managers may capture the secret anyway; the
 timed clear (§3.4) is the backstop, and the THREAT_MODEL residual-risk list gets a line. This
 is why B2 is "PARTIAL" in [security_coverage_gaps.md](../../research/security_coverage_gaps.md)
-and a candidate C33.
+— promoted as constraint C33 (2026-06-10).
 
 ### 3.6 Channel discipline: stdout vs stderr vs scrollback
 
@@ -149,7 +149,7 @@ and a candidate C33.
   `Copied 'github-prod' password to clipboard. Clears in 30 s.` Agents typically *do* capture
   stderr in their transcript — that is fine and intended: the agent learns delivery succeeded
   (so it can proceed) without learning the secret. Stored entry names are control-char/ANSI
-  sanitized before echo (gap A2) so a hostile entry title cannot smuggle escape sequences into
+  sanitized before echo (C28) so a hostile entry title cannot smuggle escape sequences into
   the agent transcript or terminal.
 - **Scrollback:** since the secret never hits the TTY, terminal scrollback, tmux capture-pane,
   asciinema recordings, and agent transcripts contain only the status line. The password prompt
@@ -184,7 +184,7 @@ and a candidate C33.
 | **C13** | stderr notice with timeout; default 30 s, configurable 5–300 via `~/.vault.toml`; SIGTERM best-effort clear (§3.4). **Noted deviation:** C13 says "background thread"; a thread dies with the one-shot CLI process, so this design uses a detached helper *process* to honor C13's actual requirements (non-blocking, timer survives to fire). Flagged for intent wording update — §7 Q6; until amended, the intent wins and a reviewer must approve this reading |
 | **C23** | Delivery is purely local IPC (X11/Wayland socket, pasteboard server, Win32 API) — no network syscalls; covered by the C23 strace test |
 | **C11/C12** | Secret buffers `Zeroizing` + mlock'd in both parent and helper; helper holds one field only (§3.2) |
-| Gap B2 (candidate C33) | History/cloud-sync suppression hints on all three platforms, with documented limits (§3.5) |
+| C33 (was gap B2) | History/cloud-sync suppression hints on all three platforms, with documented limits (§3.5) |
 
 ## 6. Test plan
 

@@ -56,7 +56,7 @@ TARGET = 300 ms, TOL = 100 ms                 # C22: "300ms ± 100ms"
 p = clamp(physical_cores, 1, 4)               # default p=4 cap: diminishing returns, laptop-friendly
 t = 3                                         # C2 default; varied only at the memory bounds
 m = 65_536 KiB (64 MiB)                       # start at the C2 default
-m_max = min(C28 ceiling 4 GiB, total_RAM / 4) # never recommend params that gag the host
+m_max = min(C2 ceiling 4 GiB, total_RAM / 4) # never recommend params that gag the host
 m_min = 19_456 KiB                            # C2 floor
 
 repeat up to 6 iterations:
@@ -74,7 +74,7 @@ print:
   current vault: m=… t=… p=…  →  run `vault upgrade-kdf --tuned` to apply
 ```
 
-Properties: every recommendation already satisfies the C2 floor and C28 ceiling by construction;
+Properties: every recommendation already satisfies the C2 floor and C2 ceiling by construction;
 `tune` is read-only (recommends, never applies); the C22 test "output contains `ms` and three
 numeric values" is the literal last line. The measured throughput (`KiB·t per ms`) is cached in the
 local state file for the §3.4 estimator.
@@ -208,7 +208,7 @@ Spec-specific additions:
    — if rotation is ever wanted, the intent must change first.
 2. **Rollback of a KDF upgrade is undetected**: a sync backend serving the pre-upgrade file
    presents valid old params (above floor) and an *equal* `vault_version`, so C16 stays silent.
-   Candidate fix for the C28+ batch: include the KDF params (or a header generation counter) in the
+   Candidate fix for the Part-2 (C35+) batch: include the KDF params (or a header generation counter) in the
    data the local anchor tracks. Worth promoting before M5.
 3. **Should `tune` also benchmark p > 4** on big desktops? Marginal: parallelism mostly trades
    latency, not attacker cost. Defer unless reference numbers say otherwise.
