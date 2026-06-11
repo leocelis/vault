@@ -11,8 +11,21 @@ All notable changes to this project are documented here. The format is based on
   documentation skeleton, and the `vault-core` / `vault-cli` / `vault-hardware` workspace.
 - Intent specification with 27 constraints across 10 groups ([vault_intent.yaml](vault_intent.yaml)),
   including AI-era hardening (CSPRNG generation `C26`, model-blind delivery `C27`).
-- Research foundation: security spec, AI-era offensive-LLM threat landscape, and a security
-  coverage-gap analysis ([research/](research/)).
+- Research foundation: security spec, AI-era offensive-LLM threat landscape, a security
+  coverage-gap analysis, and a UI-architecture study ([research/](research/)).
+- Product & design layer: a PRD with 18 major use cases ([docs/PRD.md](docs/PRD.md)), a tech spec
+  per use case ([docs/specs/](docs/specs/README.md)), a dependency-ordered roadmap (critical path +
+  sidequests), and a two-maintainer co-work protocol ([cowork.yaml](cowork.yaml)).
+- UI direction (post-v1): shared Rust `vault-core` + thin per-platform shells over a stable FFI
+  (Signal/UniFFI pattern); `ratatui` → `egui` → SwiftUI; copy-not-display delivery — `UC-18`.
+- Quick-capture import of an unstructured secrets file with masked interactive review — `UC-17`.
+
+### Changed
+- Intent **v1.2.0**: extended `C27`'s forward constraint to UI surfaces (copy-not-display, no
+  plaintext marshalled into an unzeroable managed-runtime heap) and clarified the GUI non-goal.
+- Intent **v1.1.0**: fixed `C1`/`C8` XChaCha20 keystream reuse across saves via a per-body-write
+  `nonce_prefix` HKDF salt (with conflict resolution `SC6`); fixed the SLSA provenance job in
+  `release.yml`.
 
 ### Notes
 - This project is **pre-alpha**. No functional release exists yet; do not store real secrets.

@@ -41,7 +41,7 @@ meta:
   intent_type: "feature"        # scope: single deliverable, not system-level
   name: vault
   tagline: "Zero-plaintext · local-first · open-source credential vault"
-  version: "1.1.0"
+  version: "1.2.0"
   license: "MIT OR Apache-2.0"
   language: rust
   ifscale_density: high         # IVD Rule 1: 27 constraints → segmented implementation
@@ -79,7 +79,9 @@ intent:
     - Hosted cloud sync service (untrusted-storage sync is supported; no hosted service)
     - Browser extension (v1: CLI only)
     - Team / organisational vaults (v1: single-user)
-    - GUI (v1: CLI; GUI is a future layer over the same vault format)
+    - "GUI (v1: CLI). A future GUI/TUI is a thin shell over the same Rust vault-core via a stable FFI
+       (shared-core / per-platform-shell architecture — Signal libsignal / Mozilla UniFFI pattern;
+       see UC-18). It never reimplements crypto and is bound by C27's model-blind UI rule. UI is post-v1."
     - Custom KDF or cipher implementation (all crypto from audited libraries)
     - "LLM / AI agent inside the vault trust boundary (v1 ships none; any future agentic
        interface is bound by C27's model-blind delivery rule)"
@@ -1083,6 +1085,14 @@ constraints:
       clipboard, OS keychain handoff, or direct field injection at the destination — such that
       the LLM and its context window NEVER receive the plaintext secret. Returning plaintext on
       any channel an LLM reads (including a tool result an agent ingests) is prohibited.
+      FORWARD CONSTRAINT (UI surfaces, binding on any future TUI/GUI/native shell, even though v1
+      ships none): a UI MUST default to copy-not-display (clipboard, C13); any on-screen reveal MUST
+      be explicit, authentication-gated, and time-boxed, rendered only to a buffer cleared on hide
+      (e.g. the terminal alternate-screen — never scrollback). The UI process MUST hold no long-lived
+      plaintext: it calls vault-core per delivery, and secret material MUST NOT be marshalled across
+      an FFI boundary into a managed-runtime heap (JS/Swift/Kotlin) that cannot be zeroized. The
+      secure path is identical for every shell — vault-core performs the delivery (see
+      research/ui_architecture.md and docs/specs/UC-18-native-ui.md).
     rationale: |
       Prompt injection is an unsolved problem: a systematic review across 78 studies found
       every tested coding agent vulnerable, with adaptive attack success > 85%, and production
@@ -1106,7 +1116,8 @@ constraints:
         socket, or LLM SDK; assert zero matches in code paths that touch secret material
         (reinforces C23).
       DOC: the README / threat-model section MUST state that LLM agents are outside the v1 trust
-        boundary and MUST document the model-blind delivery requirement for any future interface.
+        boundary and MUST document the model-blind delivery requirement for any future interface
+        (agentic or UI surface; the UI-surface reveal/no-marshal tests are in docs/specs/UC-18-native-ui.md §6).
 
 # ──────────────────────────────────────────────────────────────────────────────
 constraint_satisfiability:

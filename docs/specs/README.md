@@ -26,6 +26,8 @@ plan and open questions.
 | [UC-14](UC-14-runtime-hardening.md) | Survive a compromised-adjacent machine | C11, C12, C25, C13 |
 | [UC-15](UC-15-vulnerability-reporting.md) | Report a vulnerability (process spec) | — |
 | [UC-16](UC-16-agent-interface-future.md) | Agent uses the vault, never sees a secret *(post-v1 exploration)* | C27 (forward) |
+| [UC-17](UC-17-quick-capture-raw-import.md) | Quick-capture from a messy `keys.txt` (lenient import + review) | C21, C26, C18, C19, C27 |
+| [UC-18](UC-18-native-ui.md) | Fast native UI over a shared Rust core *(post-v1; core API is v1)* | C20, C11, C12, C25, C27, C5 |
 
 ## Spec lifecycle
 

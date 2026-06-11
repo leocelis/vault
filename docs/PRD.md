@@ -199,6 +199,34 @@ field injection at the destination) — never as a tool result the model ingests
 documented north star for the post-1.0 "bigger vision" (files, databases, application
 secrets) in [ROADMAP](../ROADMAP.md).
 
+### UC-17 · Quick-capture from a messy secrets file
+**Persona:** P1, P3 · **Constraints:** C21, C26, C18, C19, C27
+
+A developer has a `keys.txt` — a pile of API keys and tokens with no real structure (some
+`key=value`, some bare lines, blocks split by blank lines or `---` rulers).
+`vault import --format raw keys.txt` parses it leniently, classifies secret-vs-label lines by
+entropy and known provider prefixes, and shows a **masked** interactive review (never the full
+secret) so wrong guesses are cheap to fix before a single atomic save. Afterwards the keys are
+findable via `vault ls --search` (UC-6) and retrievable to the clipboard via `vault get` (UC-4) —
+the model-blind "easier than 1Password" on-ramp. The lenient sibling of UC-12; the entry's
+optional `kind` (login/apikey/note) lets `get` surface the key directly. See
+[spec UC-17](specs/UC-17-quick-capture-raw-import.md).
+
+### UC-18 · (Future, post-v1) Use the vault through a fast, native UI
+**Persona:** all (P1/P3 first) · **Constraints:** C20, C11, C12, C25, C27, C5 · **Status:** UI is post-v1; the core-API decision it needs is v1
+
+A graphical or terminal front-end that is fast, simple, secure, and integrates nicely with the
+host OS — **without forking the Rust security core**. Every UI is a thin client over `vault-core`
+(the Signal `libsignal` / Mozilla UniFFI pattern): pure-Rust shells (`ratatui` TUI, then an `egui`
+window) keep C20's single-binary/no-Node property and keep secrets inside the Rust boundary; a
+native **SwiftUI** shell (linked via uniffi) delivers best-in-class macOS integration — Touch ID
+and Secure Enclave unlock, which map directly to the **C5** keychain stanza. The cross-cutting
+rule: **copy-not-display by default** (C27), on-screen reveal is opt-in, auth-gated, and time-boxed.
+Electron is rejected (violates C20, ~10× the memory, unzeroable JS heap — the 1Password-8 lesson).
+The only piece that lands in v1: making the CP-4 `vault-core` API UI-agnostic and FFI-ready so every
+shell is a thin client. See [research/ui_architecture.md](research/ui_architecture.md) and
+[spec UC-18](specs/UC-18-native-ui.md).
+
 ## 6. Out of scope for v1 (non-goals)
 
 From the intent's `non_goals:` — hosted sync service, browser extension, GUI, team vaults,

@@ -60,6 +60,9 @@ lane can build against from that point on.
 `C4 C16 C17` · specs [UC-07](docs/specs/UC-07-untrusted-storage-sync.md), [UC-01 §atomic](docs/specs/UC-01-install-and-init.md)
 - Open pipeline wired end-to-end; atomic temp+rename+fsync saves; file locking
 - Rollback anchor (per-`vault_id` u64, LocalAppData/XDG, flock + re-read) · `--allow-rollback` · exit 2
+- **API must be UI-agnostic *and* FFI-ready** ([UC-18 §3.2](docs/specs/UC-18-native-ui.md)): returns
+  structured data + secret-handles, performs delivery in-core, never prints. This is the only
+  UI-related work that lands in v1 — it unblocks every future shell (TUI/egui/SwiftUI) on one core.
 - **Freezes:** the full `vault-core` public API (v0 API freeze — the big sync point)
 
 ### CP-5 · CLI core loop *(M6)*
@@ -100,6 +103,10 @@ lane can build against from that point on.
 | S-12 | **Padmé padding exploration** (PURBs) — size-leak reduction, default-off | [UC-07 §7](docs/specs/UC-07-untrusted-storage-sync.md) | CP-4 | v2 candidate, research-first |
 | S-13 | **Agent interface exploration** — handle broker, `vault_use`, OS approval gate | [UC-16](docs/specs/UC-16-agent-interface-future.md) | post-v1 | DESIGN EXPLORATION; never returns plaintext to a model (C27) |
 | S-14 | **User guide & website docs** | all specs | CP-5 | Quickstart, sync guide, threat-model-for-humans |
+| S-15 | **Quick-capture `import --format raw`** — lenient parser, entropy/prefix classifier, masked interactive review | [UC-17](docs/specs/UC-17-quick-capture-raw-import.md) | CP-1 (Entry model) | The messy-`keys.txt` on-ramp; optional `kind` tag wants to land *in* CP-1 |
+| S-16 | **`ratatui` TUI** — search → deliver loop, alt-screen reveal hygiene | [UC-18](docs/specs/UC-18-native-ui.md) | CP-4 API | **post-v1**; first UI, pure Rust, C20-exact |
+| S-17 | **`egui` window** — pure-Rust GUI shell | [UC-18](docs/specs/UC-18-native-ui.md) | CP-4 API | **post-v1**; non-terminal users, still single-binary |
+| S-18 | **SwiftUI macOS shell via `uniffi`** — Touch ID + Secure Enclave (C5), native menus | [UC-18](docs/specs/UC-18-native-ui.md) | CP-4 API + S-8d (keychain stanza) | **post-v1**; needs the SEP-API spike + ADR |
 
 ---
 
