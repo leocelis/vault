@@ -1,6 +1,6 @@
 # UC-10 — Open a Stale or Hostile Vault File Safely
 
-> **Tech spec** · Draft v0.1 · June 2026
+> **Tech spec** · Draft v0.2 (pending acceptance review; updated for intent v1.2.0–v1.3.0, 2026-06-10) · June 2026
 > **PRD:** [docs/PRD.md](../PRD.md) §5 UC-10 · **Constraints:** C2, C7, C8, C9 · **C2 ceiling** (was gap A1) · **C28** ANSI sanitization (was gap A2) — both promoted 2026-06-10
 > Where this spec and [`vault_intent.yaml`](../../vault_intent.yaml) disagree, the intent wins.
 

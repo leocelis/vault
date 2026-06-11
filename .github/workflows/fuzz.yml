@@ -23,10 +23,12 @@ jobs:
       matrix:
         target: [header_parse, stanza_parse, block_stream]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       # Deliberate exemption from the rust-toolchain.toml pin: cargo-fuzz requires nightly.
       # The shipped binary is never built here (C34 reproducibility is unaffected).
-      - uses: dtolnay/rust-toolchain@nightly
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master (toolchain selected via input)
+        with:
+          toolchain: nightly
       - name: Install cargo-fuzz
         run: cargo install cargo-fuzz
       - name: Smoke-run ${{ matrix.target }} (60s)

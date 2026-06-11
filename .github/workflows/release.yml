@@ -3,6 +3,10 @@ name: Release
 # Builds release binaries, signs them keylessly with Sigstore cosign, generates SLSA build
 # provenance, and publishes checksums — so users can verify exactly what they run.
 # See docs/VERIFYING_RELEASES.md. (Supply-chain trust: constraint C34.)
+#
+# FAIL-CLOSED (C34): the GitHub Release is created as a DRAFT and flipped public only in the
+# final job, after signing AND provenance both succeeded and the attestation is attached.
+# If any step fails, nothing is ever visible to users.
 
 on:
   push:
@@ -25,7 +29,7 @@ jobs:
           - { os: windows-latest, target: x86_64-pc-windows-msvc }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Install pinned toolchain (rust-toolchain.toml — C34 reproducibility)
         run: rustup toolchain install
       - run: rustup target add ${{ matrix.target }}
@@ -40,7 +44,7 @@ jobs:
           cp "target/${{ matrix.target }}/release/${bin}" "dist/vault-${{ matrix.target }}-${bin##*.}" 2>/dev/null || \
             cp "target/${{ matrix.target }}/release/${bin}" "dist/vault-${{ matrix.target }}"
           cd dist && shasum -a 256 * > "SHA256SUMS-${{ matrix.target }}.txt"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: dist-${{ matrix.target }}
           path: dist/
@@ -56,7 +60,7 @@ jobs:
     outputs:
       hashes: ${{ steps.hash.outputs.hashes }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with: { path: dist, merge-multiple: true }
       - name: Compute combined SHA-256 subjects
         id: hash
@@ -66,27 +70,28 @@ jobs:
           [ -n "$hashes" ]  # UC-13 §6: subjects must be non-empty
           echo "hashes=${hashes}" >> "$GITHUB_OUTPUT"
 
-  sign-and-publish:
-    name: sign (cosign) + provenance + publish
+  sign-and-draft:
+    name: sign (cosign) + create DRAFT release
     needs: build
     runs-on: ubuntu-latest
     permissions:
-      contents: write      # create the GitHub Release
-      id-token: write      # keyless OIDC signing (Sigstore) + SLSA provenance
+      contents: write      # create the (draft) GitHub Release
+      id-token: write      # keyless OIDC signing (Sigstore)
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with: { path: dist, merge-multiple: true }
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@f713795cb21599bc4e5c4b58cbad1da852d7eeb9 # v3
       - name: Keyless-sign every artifact
         run: |
           for f in dist/*; do
             [ -f "$f" ] || continue
             cosign sign-blob --yes --output-signature "$f.sig" --output-certificate "$f.pem" "$f"
           done
-      - name: Publish release
-        uses: softprops/action-gh-release@v2
+      - name: Create DRAFT release (not public until provenance is attached — C34 fail-closed)
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
+          draft: true
           files: |
             dist/*
             dist/*.sig
@@ -94,11 +99,35 @@ jobs:
 
   provenance:
     name: SLSA build provenance
-    needs: [hashes, sign-and-publish]
+    needs: [hashes, sign-and-draft]
     permissions:
       actions: read
       id-token: write
       contents: write
+    # SLSA requires referencing the generator by semantic version TAG, never a commit SHA —
+    # slsa-verifier validates the builder identity against the tagged ref (documented
+    # exemption from this repo's pin-by-SHA rule).
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.0.0
     with:
       base64-subjects: "${{ needs.hashes.outputs.hashes }}"
+
+  finalize:
+    # C34 fail-closed: only after signing AND provenance both succeeded does the release
+    # become public, with the attestation attached.
+    name: attach provenance + publish
+    needs: [sign-and-draft, provenance]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with: { pattern: "*intoto*", path: prov, merge-multiple: true }
+      - name: Attach provenance and flip the draft public
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          ls -l prov
+          gh release upload "$TAG" prov/*.intoto.jsonl
+          gh release edit "$TAG" --draft=false

@@ -44,6 +44,19 @@ All notable changes to this project are documented here. The format is based on
   satisfiability conflicts grew to 8 (`SC7` argv-vs-scriptability, `SC8` ceiling-vs-file-authoritative;
   `SC6` is the C1/C4 nonce_prefix binding from the keystream fix below). Intent version 1.2.0.
 
+### Added (2026-06-10 — governance & release-trust follow-ups)
+- `ADR-0003` (nonce_prefix payload-key salt) and `ADR-0004` (data-key-keyed HMACs,
+  `master_seed` bound to body writes) — the ADRs GOVERNANCE requires for the v1.1.0/v1.3.0
+  cryptography amendments.
+- `release.yml` is now **fail-closed** per `C34`: the GitHub Release is created as a draft and
+  flipped public only after cosign signing *and* SLSA provenance both succeed (attestation
+  attached in the same finalize job).
+- All GitHub Actions across the five workflows are **pinned by commit SHA** (Scorecard
+  Pinned-Dependencies; Dependabot maintains the pins). Documented exemption: the SLSA generator
+  must be referenced by version tag per slsa-verifier requirements.
+- All 16 tech specs bumped to Draft v0.2 (pending acceptance review) reflecting the
+  intent v1.2.0–v1.3.0 synchronization.
+
 ### Security (2026-06-10 — Gate 0 close-out, intent v1.3.0)
 - `C9`/`C10` (G0.2): header and block HMAC keys now derive from the **data key**
   (`vault-header-hmac-v2` / `vault-block-hmac-v2`) — verifiable on hardware-only unlocks and
