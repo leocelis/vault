@@ -1,0 +1,6 @@
+# Keep dependency resolution MSRV-aware: when regenerating Cargo.lock with a toolchain newer
+# than the pinned one (rust-toolchain.toml), prefer the newest versions still compatible with
+# our rust-version (Cargo.toml `rust-version`, constraint C24) instead of versions that break
+# the MSRV CI job. Honored by cargo >= 1.84; older cargos ignore it (they only read the lock).
+[resolver]
+incompatible-rust-versions = "fallback"
