@@ -26,11 +26,14 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       # Deliberate exemption from the rust-toolchain.toml pin: cargo-fuzz requires nightly.
       # The shipped binary is never built here (C34 reproducibility is unaffected).
+      # NOTE: the toolchain FILE outranks the rustup default this action sets, so every cargo
+      # invocation below must say `+nightly` explicitly — plain `cargo` would resolve to the
+      # pinned 1.82 inside the repo and fail on edition2024 manifests (as it did).
       - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master (toolchain selected via input)
         with:
           toolchain: nightly
       - name: Install cargo-fuzz
-        run: cargo install cargo-fuzz
+        run: cargo +nightly install cargo-fuzz --locked
       - name: Smoke-run ${{ matrix.target }} (60s)
-        run: cargo fuzz run ${{ matrix.target }} -- -max_total_time=60
+        run: cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=60
         continue-on-error: true   # remove once fuzz targets are implemented (M2)
