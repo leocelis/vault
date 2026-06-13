@@ -29,14 +29,23 @@ pub enum Error {
     #[error("header tampered or wrong password")]
     HeaderAuth,
 
+    /// The header declared a KDF algorithm this version does not support (constraint C8).
+    #[error("unsupported KDF algorithm")]
+    UnsupportedKdf,
+
     /// KDF parameters were below the enforced floor or above the safe ceiling
-    /// (constraint C2; ceiling is coverage-gap A1).
+    /// (constraints C2 and C28).
     #[error("KDF parameters are outside the safe range (possible hostile or corrupt file)")]
     KdfParamsOutOfRange,
 
     /// An authentication tag on the encrypted body failed (constraints C1, C10).
     #[error("authentication failed while decrypting the vault body")]
     BodyAuth,
+
+    /// The encrypted body was structurally malformed or truncated (constraint C10): a block size
+    /// exceeded the maximum, the end-of-stream marker was missing, or bytes ran out mid-block.
+    #[error("vault body is malformed or truncated")]
+    BodyMalformed,
 
     /// The decrypted version counter regressed versus the local anchor (constraint C16).
     #[error("vault version regressed; the sync backend may have served an older copy")]
