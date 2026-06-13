@@ -23,6 +23,11 @@ All notable changes to this project are documented here. The format is based on
   HmacBlockStream parsers, Argon2id floor+ceiling validation, `data_key`-keyed integrity, and the
   three fuzz targets wired to the real parsers (constraints `C2`, `C5`, `C7`–`C10`, `C30`). 30 unit
   tests; `fmt` + `clippy -D warnings` clean on the pinned toolchain.
+- **Project-scoped Rust toolchain** ([`scripts/setup-rust.sh`](scripts/setup-rust.sh),
+  [`scripts/dev-env.sh`](scripts/dev-env.sh), [`.envrc`](.envrc)): the toolchain installs into
+  `./.toolchain` (git-ignored) via rustup's `RUSTUP_HOME`/`CARGO_HOME` + `--no-modify-path` — never
+  into `~/.rustup`, `~/.cargo`, or shell profiles. Reproducible, self-contained, and removable with
+  `rm -rf .toolchain`. Documented in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Changed
 - Intent **v1.4.0** is canonical (see the Security section). A parallel `main`-side Gate-0 pass

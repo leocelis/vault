@@ -31,10 +31,21 @@ for the remaining candidate areas (C35+, "Part 2") we already know we want.
 
 ## Development setup
 
+The Rust toolchain is installed **into the project**, never machine-wide — a vault's build
+environment should be self-contained and reproducible, not entangled with whatever Rust is in your
+home directory. We use rustup's official `RUSTUP_HOME` / `CARGO_HOME` relocation plus
+`--no-modify-path`, so nothing lands in `~/.rustup`, `~/.cargo`, or your shell profiles. The exact
+version and components come from [`rust-toolchain.toml`](rust-toolchain.toml) (single source of
+truth). See the rustup docs for the mechanism:
+[installation](https://rust-lang.github.io/rustup/installation/index.html) ·
+[other / `--no-modify-path`](https://rust-lang.github.io/rustup/installation/other.html).
+
 ```sh
-# Toolchain is pinned in rust-toolchain.toml.
 git clone https://github.com/leocelis/vault
 cd vault
+
+./scripts/setup-rust.sh    # one-time: installs the pinned toolchain into ./.toolchain (git-ignored)
+. scripts/dev-env.sh       # activate it for this shell  (or use direnv: `direnv allow`)
 
 # We use `just` for common tasks (see the justfile):
 just            # list tasks
@@ -43,7 +54,11 @@ just audit      # cargo audit + cargo deny
 just fuzz       # smoke-run the fuzz targets
 ```
 
-If you don't have `just`, the equivalent cargo commands are in the [`justfile`](justfile).
+The toolchain lives in `./.toolchain/` (~1.2 GB, git-ignored). To remove it completely, just
+`rm -rf .toolchain` — there is nothing to uninstall from your machine. If you don't have `just`,
+the equivalent cargo commands are in the [`justfile`](justfile). Do **not** `curl … | sh` the
+default rustup installer for this repo — that writes to your home directory and edits your shell
+profiles; `scripts/setup-rust.sh` is the supported path.
 
 ## Pull request checklist
 

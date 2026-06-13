@@ -3,6 +3,12 @@
 **/target
 Cargo.lock.bak
 *.rs.bk
+# Project-scoped Rust toolchain (RUSTUP_HOME / CARGO_HOME live here — never machine-wide).
+# See CONTRIBUTING.md "Development setup". This directory is large (~1.2 GB) and local-only.
+/.toolchain/
+# direnv (optional local activation of the project-scoped toolchain)
+/.direnv/
+.envrc.local
 # Fuzzing
 /fuzz/target
 /fuzz/corpus
