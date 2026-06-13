@@ -6,8 +6,35 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 10
     labels: ["dependencies", "security"]
+    # MSRV guard (stopgap): the repo pins Rust 1.82 (rust-toolchain.toml) for reproducible builds,
+    # but these crates have moved to the Rust-2024 edition / release-candidate line, which needs
+    # cargo >= 1.85 and would break the build (and, for the RustCrypto pre-releases, pull unstable
+    # crypto into the security core — against constraint C3). Block major/minor bumps here; PATCH
+    # updates still flow (so security patches within the pinned major are not suppressed), and
+    # `cargo audit`/`cargo deny` independently catch advisories. Lift these ignores as part of a
+    # deliberate MSRV bump (see CONTRIBUTING.md / rust-toolchain.toml), not piecemeal.
+    ignore:
+      - dependency-name: "getrandom"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "hkdf"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "hmac"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "sha2"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "secrecy"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "zeroize"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "clap"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "proptest"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
     labels: ["ci", "dependencies"]
+    # Actions are SHA-pinned (constraint C34 / OpenSSF Scorecard). dependabot bumps the pinned SHA
+    # while preserving the pin — that is desired, so no ignores here. The earlier tag-downgrade PRs
+    # predated SHA-pinning and will not recur once closed.
