@@ -1,6 +1,6 @@
 # UC-08 — Recover from a sync conflict
 
-> **Tech spec** · Draft v0.1 · June 2026
+> **Tech spec** · Draft v0.2 (pending acceptance review; updated for intent v1.3.0–v1.4.0, 2026-06-10) · June 2026
 > **PRD:** [docs/PRD.md](../PRD.md) §5 UC-8 · **Constraints:** C21 (merge), C16, SC3
 > Where this spec and [`vault_intent.yaml`](../../vault_intent.yaml) disagree, the intent wins.
 
@@ -80,7 +80,7 @@ vault merge OLD.vlt NEW.vlt [--output PATH] [--prefer newest|left|right] [--dry-
    Hardware stanzas are tried per the UC-09 ordering before each password prompt.
 3. Decrypt both payloads into mlock'd `SecretBuffer`s (C11/C12); compute the entry union (§3.4).
 4. Resolve conflicts: interactively per entry (default on a TTY, masked diff §3.4), or by
-   `--prefer` non-interactively. Non-TTY without `--prefer` → exit 3, nothing written.
+   `--prefer` non-interactively. Non-TTY without `--prefer` → exit 8 (usage), nothing written.
 5. Write the merged vault atomically; print a summary (counts only, no field values).
 
 `--dry-run` prints the summary and per-entry resolution plan (masked) without writing.
@@ -125,7 +125,7 @@ There is no stored ancestor, so this is deliberately a **two-way** merge ("three
 **per entry, not per field** — field-level cherry-picking is a v2 candidate.
 
 **Interactive masked diff.** Secret values never reach the terminal (C27 spirit; also avoids
-ANSI-injection surface, coverage-gap A2 — field *names* are ours, field *values* are sanitized
+ANSI-injection surface, constraint C28 — field *names* are ours, field *values* are sanitized
 before any display):
 
 ```
@@ -143,7 +143,7 @@ Keep [o]ld / [n]ew / [s]kip entry / newest for [a]ll remaining? [n]
   (a displayed digest would be an offline-crackable oracle). Equality/difference is computed
   in memory (constant-time, C25) and reported only as `(same)` / `(differs)`.
 - **Non-protected fields** (title, username, url, tags): shown in full — the user has already
-  unlocked both payloads; these are display-sanitized per coverage-gap A2.
+  unlocked both payloads; these are display-sanitized per constraint C28.
 - `[s]kip` keeps **both** versions: the loser is duplicated under a fresh UUID with title suffix
   `" (conflict 2026-06-08)"`, so no data is silently dropped.
 
@@ -208,7 +208,7 @@ The merged vault is a **new** save of the active vault lineage:
 5. **INTEGRATION (version):** OLD v7, NEW v9 → merged v10; reopen advances anchor to 10, no
    rollback warning; subsequently opening NEW (v9) again *does* warn (regression vs. 10).
 6. **INTEGRATION (non-interactive):** stdin from `/dev/null`, conflicts present, no `--prefer` →
-   exit 3, no output file written.
+   exit 8 (usage), no output file written.
 7. **INTEGRATION (identity):** `vault_id` mismatch → error "different vaults", exit 1.
 8. **INTEGRATION (stanzas):** OLD has password+fido2, NEW has password only → merged has both;
    attempt to construct a merge dropping the password stanza → hard error (C5).

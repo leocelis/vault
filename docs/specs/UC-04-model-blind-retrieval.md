@@ -1,6 +1,6 @@
 # UC-04 — Model-Blind Retrieval: Get a Secret While an AI Agent Is Watching
 
-> **Tech spec** · Draft v0.1 · June 2026 · **the flagship use case**
+> **Tech spec** · Draft v0.2 (pending acceptance review; updated for intent v1.3.0–v1.4.0, 2026-06-10) · June 2026 · **the flagship use case**
 > **PRD:** [docs/PRD.md](../PRD.md) §5 UC-4 · **Constraints:** C27 (primary), C13, C23; touches B2 ([gaps](../../research/security_coverage_gaps.md))
 > Where this spec and [`vault_intent.yaml`](../../vault_intent.yaml) disagree, the intent wins.
 
@@ -12,7 +12,7 @@ delivered; it can never read it.** The secret travels `decrypted payload → OS 
 touching no channel an LLM ingests by default — not stdout, not a tool result, not a file.
 
 Covered here: the threat model recap, per-platform clipboard delivery (X11, Wayland, macOS,
-Windows), the auto-clear timer (C13), clipboard-history/cloud-sync suppression (gap B2),
+Windows), the auto-clear timer (C13), clipboard-history/cloud-sync suppression (C33),
 stdout/stderr channel discipline, and interaction with scrollback/transcript capture.
 The warned opt-outs (`--stdout`, export) are specified in [UC-05](UC-05-script-and-ci-output.md).
 
@@ -57,7 +57,7 @@ malware-with-root is out of scope per [THREAT_MODEL](../THREAT_MODEL.md)).
 | stdout | **Yes** (tool result) | Empty on `vault get` (C27) |
 | stderr | Usually (merged into transcript) | Human-status text only; never secret bytes |
 | Files / tempfiles | Yes (workspace reads) | No secret ever written to a file path |
-| Shell history / argv | Yes | No secrets on argv (gap B1 → UC-05 §3.5) |
+| Shell history / argv | Yes | No secrets on argv (C31 → UC-05 §3.5) |
 | OS clipboard | **No** — agents have no clipboard tool by default; reading it requires running a new program, which is a visible, auditable action | **Delivery channel** |
 
 The clipboard is not magically unreadable — it is *outside the model's default input set*, and
@@ -90,7 +90,7 @@ vault __clip-holder (hidden subcommand, same binary — C20 single static binary
 - On macOS/Windows the OS pasteboard server retains contents after the writer exits, so the
   helper's only job there is the timer; on X11/Wayland it is also the selection owner.
 - Secret handoff is via a pipe fd inherited at `fork`/`spawn` — `/proc/<pid>/cmdline` and
-  `environ` stay clean (gap B1 discipline applies to our own internals too).
+  `environ` stay clean (C31 discipline applies to our own internals too).
 
 ### 3.3 Per-platform delivery
 
@@ -125,7 +125,7 @@ retaining* the prior clipboard — arbitrary other-app data, possibly itself sen
 process built to hold exactly one secret, and it can clobber a newer user copy on a race.
 Verdict in §4; revisit post-v1 if user demand is real.
 
-### 3.5 Clipboard-history & cloud-sync suppression (gap B2)
+### 3.5 Clipboard-history & cloud-sync suppression (C33)
 
 Set together with the secret, verbatim from KeePassXC's verified implementation:
 
@@ -139,7 +139,7 @@ Set together with the secret, verbatim from KeePassXC's verified implementation:
 data-control (e.g. `cliphist`) and non-compliant managers may capture the secret anyway; the
 timed clear (§3.4) is the backstop, and the THREAT_MODEL residual-risk list gets a line. This
 is why B2 is "PARTIAL" in [security_coverage_gaps.md](../../research/security_coverage_gaps.md)
-and a candidate C33.
+— promoted as constraint C33 (2026-06-10).
 
 ### 3.6 Channel discipline: stdout vs stderr vs scrollback
 
@@ -149,7 +149,7 @@ and a candidate C33.
   `Copied 'github-prod' password to clipboard. Clears in 30 s.` Agents typically *do* capture
   stderr in their transcript — that is fine and intended: the agent learns delivery succeeded
   (so it can proceed) without learning the secret. Stored entry names are control-char/ANSI
-  sanitized before echo (gap A2) so a hostile entry title cannot smuggle escape sequences into
+  sanitized before echo (C28) so a hostile entry title cannot smuggle escape sequences into
   the agent transcript or terminal.
 - **Scrollback:** since the secret never hits the TTY, terminal scrollback, tmux capture-pane,
   asciinema recordings, and agent transcripts contain only the status line. The password prompt
@@ -159,9 +159,9 @@ and a candidate C33.
 
 | Condition | Behavior |
 |---|---|
-| No clipboard available (headless SSH, no `$DISPLAY`/`$WAYLAND_DISPLAY`, compositor lacks data-control) | **Refuse**, exit 3: `no clipboard available on this session; use --stdout (prints a security warning) if you accept plaintext on stdout`. Never silently degrade to stdout — PRD §9.4's candidate resolution, adopted here (§7 Q3 tracks promotion into the intent). |
+| No clipboard available (headless SSH, no `$DISPLAY`/`$WAYLAND_DISPLAY`, compositor lacks data-control) | **Refuse**, exit 7: `no clipboard available on this session; use --stdout (prints a security warning) if you accept plaintext on stdout`. Never silently degrade to stdout — PRD §9.4's resolution — promoted into C27 with exit code 7, 2026-06-10 (intent v1.4.0). |
 | Helper spawn fails | Copy is **not** performed (a copy with no timer violates C13); exit 1 with cause. |
-| Entry/field not found | exit 3 / 4 per the UC-05 exit-code table; message echoes the *queried* name only after A2 sanitization. |
+| Entry/field not found | exit 9 per the C21 exit-code map; message echoes the *queried* name only after A2 sanitization. |
 | Clipboard write fails mid-flight | Zeroize, exit 1; nothing partial left on the clipboard. |
 
 ## 4. Alternatives considered
@@ -184,7 +184,7 @@ and a candidate C33.
 | **C13** | stderr notice with timeout; default 30 s, configurable 5–300 via `~/.vault.toml`; SIGTERM best-effort clear (§3.4). **Noted deviation:** C13 says "background thread"; a thread dies with the one-shot CLI process, so this design uses a detached helper *process* to honor C13's actual requirements (non-blocking, timer survives to fire). Flagged for intent wording update — §7 Q6; until amended, the intent wins and a reviewer must approve this reading |
 | **C23** | Delivery is purely local IPC (X11/Wayland socket, pasteboard server, Win32 API) — no network syscalls; covered by the C23 strace test |
 | **C11/C12** | Secret buffers `Zeroizing` + mlock'd in both parent and helper; helper holds one field only (§3.2) |
-| Gap B2 (candidate C33) | History/cloud-sync suppression hints on all three platforms, with documented limits (§3.5) |
+| C33 (was gap B2) | History/cloud-sync suppression hints on all three platforms, with documented limits (§3.5) |
 
 ## 6. Test plan
 
@@ -199,7 +199,7 @@ and a candidate C33.
 5. **INTEGRATION (hints, Linux CI):** read back offered MIME types while holder is alive;
    assert `x-kde-passwordManagerHint` present with value `secret`. Windows/macOS equivalents
    behind platform CI gates.
-6. **INTEGRATION (headless):** run with `DISPLAY`/`WAYLAND_DISPLAY` unset → exit 3, stderr
+6. **INTEGRATION (headless):** run with `DISPLAY`/`WAYLAND_DISPLAY` unset → exit 7, stderr
    mentions `--stdout`, clipboard untouched, stdout empty.
 7. **UNIT (no secret on argv/env):** spawn the holder; read its `/proc/<pid>/cmdline` and
    `environ`; assert the secret appears in neither.
@@ -217,9 +217,9 @@ and a candidate C33.
    hardware.)
 2. **macOS Universal Clipboard:** confirm empirically that `ConcealedType`/`TransientType`
    suppress Handoff sync to other devices, or document as residual risk alongside B2.
-3. **Promote the headless-refusal rule** (§3.7) from this spec into the intent (PRD §9.4 open
-   question) — candidate text: "If no OS clipboard is available, `vault get` MUST refuse and
-   point to `--stdout`; it MUST NOT fall back to stdout silently."
+3. **Promote the headless-refusal rule** — ✅ Resolved 2026-06-10 (intent v1.4.0): C27 now
+   mandates refusal with exit code 7 and the exact guidance message; never a silent stdout
+   fallback.
 4. **Wayland history tools** (`cliphist` et al.) ignore suppression hints today — pursue an
    upstream `ext-data-control` "sensitive" convention, or accept the timed-clear backstop?
 5. **Should the helper re-assert the clipboard** if another process overwrites it within the

@@ -7,14 +7,11 @@
 use secrecy::{Secret, SecretBox};
 use zeroize::Zeroizing;
 
-/// A master password, read from a no-echo prompt or stdin — **never** from argv (constraint C29).
+/// A master password, read from a no-echo prompt or stdin — **never** from argv (constraint C31).
 pub type MasterPassword = SecretBox<[u8]>;
 
 /// The 256-bit vault data key (constraint C4). Wrapped so it cannot be logged or cloned.
-///
-/// Uses `Secret<[u8; 32]>` (stack-backed, one of C11's approved types) rather than
-/// `SecretBox<[u8; 32]>` — a boxed *array* does not implement `Zeroize` in `secrecy` 0.8
-/// (only boxed slices do), so `SecretBox` is reserved for the unsized `[u8]` case above.
+/// `Secret<[u8; 32]>` is one of C11's approved types; a boxed array would not implement `Zeroize`.
 pub type DataKey = Secret<[u8; 32]>;
 
 /// A transient buffer of decrypted plaintext that zeroes on drop (constraint C11).

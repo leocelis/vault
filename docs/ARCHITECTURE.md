@@ -6,6 +6,7 @@ Vault is a Cargo workspace with a deliberately small, auditable security core.
 ┌─────────────────────────────────────────────────────────────┐
 │  vault-cli  (the `vault` binary)                             │
 │  clap commands · clipboard/stdout delivery · prompts         │  C20–C22, C26, C27
+│  output sanitization · export escaping · no argv secrets     │  C28, C29, C31
 └───────────────┬─────────────────────────────────────────────┘
                 │ depends on
 ┌───────────────▼─────────────────────────────────────────────┐
@@ -13,9 +14,9 @@ Vault is a Cargo workspace with a deliberately small, auditable security core.
 │                                                              │
 │  crypto/     XChaCha20-Poly1305 STREAM · Argon2id · HKDF     │  C1–C3
 │  envelope/   data key · multi-stanza OR wrapping            │  C4–C6
-│  format/     header · KDF params · integrity · block stream  │  C7–C10
-│  memory/     Secret/Zeroizing types · mlock · constant-time  │  C11–C13, C25
-│  rollback/   monotonic counter · local state anchor          │  C16
+│  format/     header · KDF params · integrity · block stream  │  C7–C10, C30
+│  memory/     Secret/Zeroizing types · mlock · constant-time  │  C11–C13, C25, C33
+│  rollback/   monotonic counter · local anchor · atomic save  │  C16, C32
 └───────────────┬─────────────────────────────────────────────┘
                 │ optional
 ┌───────────────▼─────────────────────────────────────────────┐
@@ -37,12 +38,13 @@ Vault is a Cargo workspace with a deliberately small, auditable security core.
 ## Data flow: opening a vault
 
 1. Read plaintext header; verify `SHA-256(header)` (fast corruption check — no key needed). `C9`
-2. Run Argon2id over the master password using the **file's** KDF params (validated against the
-   floor **and** ceiling). `C2`, `C8`
-3. Derive the master key → verify `header_hmac`. On failure: abort, decrypt nothing. `C9`
-4. Unwrap the data key from the first valid stanza (OR model). `C4`–`C6`
-5. Verify each HmacBlockStream block, then STREAM-decrypt each 64 KiB chunk (tag-checked before
-   release) into `mlock`'d, zeroizing buffers. `C1`, `C10`–`C12`
+2. Validate the **file's** KDF params against the floor **and** ceiling. `C2`, `C8`
+3. Unwrap the data key from the first valid stanza (OR model; password path runs Argon2id —
+   wrong password and tampered KDF params both fail here, indistinguishably). `C4`–`C6`, `C9`
+4. Verify `header_hmac` with the data-key-derived key (works on every unlock path, including
+   hardware-only). On failure: abort, decrypt nothing. `C9`
+5. Verify each HmacBlockStream block (data-key-keyed), then STREAM-decrypt each 64 KiB chunk
+   (tag-checked before release) into `mlock`'d, zeroizing buffers. `C1`, `C10`–`C12`
 6. Read the inner header; check the monotonic counter against the local anchor (rollback). `C16`, `C19`
 
 ## Invariants the code must uphold
@@ -51,5 +53,8 @@ Vault is a Cargo workspace with a deliberately small, auditable security core.
 - No `==` on secret bytes — constant-time only. `C25`
 - No payload byte is returned before its authentication tag verifies. `C1`, `C9`, `C10`
 - No secret is ever written to a network socket or an LLM-readable channel by default. `C23`, `C27`
+- No secret is ever accepted as a command-line argument. `C31`
+- No stored field reaches a terminal or an export file unsanitized. `C28`, `C29`
+- No in-place write of the vault file — atomic rename with a verified backup, always. `C32`
 
 See [CRYPTO.md](CRYPTO.md) and [FILE_FORMAT.md](FILE_FORMAT.md) for the details.

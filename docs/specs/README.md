@@ -34,5 +34,5 @@ plan and open questions.
 `Draft` → reviewed by maintainers → `Accepted` (hard-to-reverse decisions also get an
 [ADR](../adr/)) → implementation per the intent's segmentation plan → spec updated to
 `Implemented` with deviations noted. New constraints discovered while spec-writing are
-proposed as C28+ candidates (see
+proposed as Part-2 candidates — C35+; the 2026-06-10 pass promoted the first batch as C28–C34 (see
 [research/security_coverage_gaps.md](../../research/security_coverage_gaps.md)).

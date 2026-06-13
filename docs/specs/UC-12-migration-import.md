@@ -1,6 +1,6 @@
 # UC-12 — Migrate from an Existing Manager
 
-> **Tech spec** · Draft v0.1 · June 2026
+> **Tech spec** · Draft v0.2 (pending acceptance review; updated for intent v1.3.0–v1.4.0, 2026-06-10) · June 2026
 > **PRD:** [docs/PRD.md](../PRD.md) §5 UC-12 · **Constraints:** C21 (import), C26; touches C16, C17, C18, C23, C24, C27
 > Where this spec and [`vault_intent.yaml`](../../vault_intent.yaml) disagree, the intent wins.
 
@@ -82,7 +82,7 @@ either a third-party format parser with crypto (`keepass`) or an external-binary
 
 Mechanics: detect `gpg` on `PATH` (error with install guidance if absent); run
 `gpg --quiet --batch --decrypt <file>` per entry, reading plaintext from the child's stdout pipe
-directly into a `Zeroizing<Vec<u8>>` (C11). Never pass secrets on argv (coverage-gap B1), never
+directly into a `Zeroizing<Vec<u8>>` (C11). Never pass secrets on argv (C31), never
 write decrypted output to a temp file. gpg talks only to the local agent — no network (C23).
 
 ### 3.2 Input schemas (v1)

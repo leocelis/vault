@@ -1,7 +1,7 @@
 //! `vault` — the command-line interface (constraints C20–C22, C26, C27).
 //!
 //! Secret-handling rules enforced here:
-//! - Secrets are **never** accepted as CLI arguments (coverage-gap B1).
+//! - Secrets are **never** accepted as CLI arguments (constraint C31).
 //! - `vault get` delivers to the clipboard by default; `--stdout` is a warned opt-in so an AI agent
 //!   watching stdout cannot scrape the secret (constraint C27).
 //!

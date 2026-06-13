@@ -11,7 +11,11 @@ This split exists so two maintainers (and their agents) can work **in parallel w
 [`docs/specs/`](docs/specs/README.md) for the design of every item below. Legacy milestone tags
 (M2…M10) are kept in parentheses because the PRD and specs reference them.
 
-Done so far: research & intent (M0 ✅), OSS scaffolding (M1 ✅), PRD + 16 tech specs ✅.
+Done so far: research & intent (M0 ✅), OSS scaffolding (M1 ✅), PRD + 16 tech specs ✅,
+spec-hardening Part 1 — intent v1.3.0: `C28`–`C34` promoted, KDF ceiling + Unicode NFC folded
+into `C2`, spec self-contradictions resolved ✅, Gate 0 close-out — intent v1.4.0: G0.2/G0.3/
+G0.6/G0.7/G0.8 amended (HMAC re-keying, full-save KDF upgrades, clipboard helper, YubiKey
+staleness, exit codes) ✅ *(all v1.1.0–v1.4.0 amendments pending second-maintainer review)*.
 
 ---
 
@@ -23,11 +27,13 @@ maintainers, per [GOVERNANCE](GOVERNANCE.md) two-maintainer rule). Small, but th
 | # | Decision | Found in | Proposed resolution |
 |---|----------|----------|---------------------|
 | G0.1 | **C1 keystream reuse across re-saves** — same data key + deterministic nonces ⇒ XOR of two saved versions leaks plaintext diffs | [UC-07 §7](docs/specs/UC-07-untrusted-storage-sync.md) | ✅ Amended (intent v1.1.0): per-body-write `nonce_prefix` HKDF salt + SC6 — pending second-maintainer review |
-| G0.2 | **C9/C10 HMAC key source** — header/block HMACs keyed from Argon2id `master_key`, which a hardware-only unlock never derives | [UC-10 §7](docs/specs/UC-10-hostile-file-parsing.md) | ✅ Amended (intent v1.3.0): HMACs keyed from `data_key`; unwrap-vs-HMAC failures share one ambiguous error — pending second-maintainer review |
-| G0.3 | **`upgrade-kdf` rollback blind spot** — header-only ops don't bump `vault_version`; backend can serve the weaker-KDF file undetected | [UC-11 §7](docs/specs/UC-11-kdf-calibration.md) | ✅ Amended (intent v1.3.0): new `header_generation` u64 in the header, +1 on every save incl. header-only; anchored locally beside `vault_version` (C8/C16) — preserves C4's O(1) rotation |
-| G0.4 | **Promote C28+ candidates** — KDF ceiling (A1), no-secrets-on-argv (B1, drafted in UC-05), ANSI-safe output (A2) | [gaps doc](research/security_coverage_gaps.md) | ✅ Ratified (intent v1.3.0): **C28** KDF ceiling · **C29** no-argv · **C30** ANSI-safe · **C31** presentation-layer boundary; C20's own test de-argv'd; remaining candidates start at C32 |
+| G0.2 | **C9/C10 HMAC key source** — header/block HMACs keyed from Argon2id `master_key`, which a hardware-only unlock never derives; corollary: rotating `master_seed` on a header-only save would orphan the stored block HMACs | [UC-10 §7](docs/specs/UC-10-hostile-file-parsing.md) | ✅ Amended (intent v1.4.0): HMACs keyed from `data_key` (`*-v2` info strings); `master_seed` rotation bound to body-writing saves; C9 error semantics split (stanza-step ambiguous, HMAC-step precise) — pending second-maintainer review |
+| G0.3 | **`upgrade-kdf` rollback blind spot** — header-only ops don't bump `vault_version`; backend can serve the weaker-KDF file undetected | [UC-11 §7](docs/specs/UC-11-kdf-calibration.md) | ✅ Amended (intent v1.4.0): `upgrade-kdf` is a full body-writing save — version bump, fresh `master_seed`/`nonce_prefix`, body re-encrypted — pending second-maintainer review |
+| G0.4 | **Promote C28+ candidates** from the [gaps doc](research/security_coverage_gaps.md) | [gaps doc](research/security_coverage_gaps.md) | ✅ Done (intent v1.3.0): promoted as `C28` ANSI-safe output, `C29` export escaping, `C30` parser robustness/fuzzing, `C31` no-secrets-on-argv, `C32` atomic saves, `C33` clipboard concealment, `C34` signed releases; KDF ceiling (A1) + Unicode NFC (E2) folded into `C2` — pending second-maintainer review |
 | G0.5 | **`release.yml` provenance bug** — SLSA job reads `needs.build.outputs.hashes`; build job defines no outputs | [UC-13 §3.2](docs/specs/UC-13-verifiable-releases.md) | ✅ Fixed: dedicated `hashes` job computes combined SLSA subjects |
-| G0.6 | **C13 thread → helper process** — clear-timer "thread" can't outlive a one-shot CLI | [UC-04 §7](docs/specs/UC-04-model-blind-retrieval.md) | ✅ Amended (intent v1.3.0): thread *or* detached holder process; secret via pipe/fd only (C29); clear-iff-unchanged |
+| G0.6 | **C13 thread → helper process** — clear-timer "thread" can't outlive a one-shot CLI | [UC-04 §7](docs/specs/UC-04-model-blind-retrieval.md) | ✅ Amended (intent v1.4.0): C13 requires a detached helper with clear-iff-unchanged semantics — pending second-maintainer review |
+| G0.7 | **C5 strict-abort vs UC-09 graceful staleness** — intent (v1.3.0) mandated abort-on-absent-YubiKey; UC-09 specced stored-challenge graceful staleness | [UC-09 §7](docs/specs/UC-09-hardware-factors.md) | ✅ Amended (intent v1.4.0): graceful staleness adopted as default (challenge stored in stanza `extra`, loud warning, self-heals on next device-present save); `yubikey_strict` / `--strict-yubikey` opts into abort — pending second-maintainer review |
+| G0.8 | **Stable exit codes + headless clipboard rule + `vault stanzas`** — specs disagreed on exit codes (UC-04/05/06/08); no enrollment command existed; headless `get` behavior was spec-only | [UC-10 §7](docs/specs/UC-10-hostile-file-parsing.md), [UC-04 §7](docs/specs/UC-04-model-blind-retrieval.md) | ✅ Amended (intent v1.4.0): C21 freezes the 0–9 exit-code map and adds `vault stanzas list\|add\|remove`; C27 mandates headless refusal (exit 7) — pending second-maintainer review |
 
 ---
 
@@ -37,10 +43,8 @@ Each node lists its constraints, spec, and **the interface it freezes** — the 
 lane can build against from that point on.
 
 ### CP-1 · File format core *(M2)*
-`C7 C8 C9 C10` · specs [UC-03](docs/specs/UC-03-store-secret.md), [UC-10](docs/specs/UC-10-hostile-file-parsing.md)
+`C7 C8 C9 C10 C30` · specs [UC-03](docs/specs/UC-03-store-secret.md), [UC-10](docs/specs/UC-10-hostile-file-parsing.md)
 - Header parse/serialize (magic, version, KDF params, stanza records; bounded reads, length caps)
-- Includes the v1.3.0 layout additions: `header_generation` u64 (G0.3) and the `kind` entry tag
-  0x000E (UC-17); KDF **ceiling** check (C28) wired into the verification pipeline
 - Bounded **TLV entry/payload model** (tag bit 0x8000 = Protected)
 - HmacBlockStream framing; 10-step verification pipeline order
 - Fuzz targets live: `header_parse`, `stanza_parse`, `block_stream`
@@ -59,7 +63,7 @@ lane can build against from that point on.
 - **Freezes:** `vault-core::memory` secret types used by every later component
 
 ### CP-4 · Vault read/write, rollback, atomic saves *(M5)*
-`C4 C16 C17` · specs [UC-07](docs/specs/UC-07-untrusted-storage-sync.md), [UC-01 §atomic](docs/specs/UC-01-install-and-init.md)
+`C4 C16 C17 C32` · specs [UC-07](docs/specs/UC-07-untrusted-storage-sync.md), [UC-01 §atomic](docs/specs/UC-01-install-and-init.md)
 - Open pipeline wired end-to-end; atomic temp+rename+fsync saves; file locking
 - Rollback anchor (per-`vault_id` u64, LocalAppData/XDG, flock + re-read) · `--allow-rollback` · exit 2
 - **API must be UI-agnostic *and* FFI-ready** ([UC-18 §3.2](docs/specs/UC-18-native-ui.md)): returns
@@ -68,19 +72,20 @@ lane can build against from that point on.
 - **Freezes:** the full `vault-core` public API (v0 API freeze — the big sync point)
 
 ### CP-5 · CLI core loop *(M6)*
-`C20 C21 C22 C27ᵈᵉᶠᵃᵘˡᵗ` · specs [UC-01](docs/specs/UC-01-install-and-init.md), [UC-04](docs/specs/UC-04-model-blind-retrieval.md), [UC-06](docs/specs/UC-06-entry-management.md)
+`C20 C21 C22 C27ᵈᵉᶠᵃᵘˡᵗ C28 C29 C31` · specs [UC-01](docs/specs/UC-01-install-and-init.md), [UC-04](docs/specs/UC-04-model-blind-retrieval.md), [UC-06](docs/specs/UC-06-entry-management.md)
 - `init` (≤5 prompts) · `add` · `get` (clipboard default) · `ls --search` · `edit` (field-by-field) · `rm` · `lock`
 - Non-TTY behavior matrix; no secrets on argv; musl static build verified
 - **Freezes:** CLI surface & exit codes (scripts can rely on them)
 
 ### CP-6 · Distribution & trust *(M8)*
-`C24 C23 C3` · spec [UC-13](docs/specs/UC-13-verifiable-releases.md)
+`C3 C23 C24 C34` · spec [UC-13](docs/specs/UC-13-verifiable-releases.md)
 - Reproducible builds (`--locked`, remap-path-prefix) · cosign keyless · SLSA provenance (fixed per G0.5)
 - `cargo auditable` embedded SBOM + CycloneDX sidecar · crates.io Trusted Publishing
 
 ### CP-7 · Full IVD audit → external audit → v1.0 *(M10)*
-- IVD Rule 2 sweep: 27+ constraints, PASS/FAIL/NEEDS_REVIEW, `tests/constraint_coverage.rs` all green
-- Independent third-party audit (format/parser, KDF, memory, hardware FFI, AI-era delivery) → **1.0.0**
+- IVD Rule 2 sweep: all 34 constraints, PASS/FAIL/NEEDS_REVIEW, `tests/constraint_coverage.rs` all green
+- Independent third-party audit (format/parser, KDF, memory, hardware FFI, AI-era delivery) is a
+  **hard release gate** — no v1.0 without it → **1.0.0**
 
 ---
 
@@ -88,7 +93,7 @@ lane can build against from that point on.
 
 | ID | Sidequest | Spec | Unblocked by | Notes |
 |----|-----------|------|--------------|-------|
-| S-1 | **Clipboard-holder helper process** (X11/Wayland/macOS/Windows, history-suppression hints, clear-iff-unchanged) | [UC-04](docs/specs/UC-04-model-blind-retrieval.md) | nothing | Standalone binary/crate; the flagship's engine |
+| S-1 | **Clipboard-holder helper process** (X11/Wayland/macOS/Windows, history-suppression hints, clear-iff-unchanged) | [UC-04](docs/specs/UC-04-model-blind-retrieval.md) | nothing | Standalone binary/crate; the flagship's engine (`C13`/`C33`) |
 | S-2 | **`vault gen`** — rejection sampling, charsets, EFF wordlist embedding, chi-square test harness | [UC-02](docs/specs/UC-02-csprng-generation.md) | nothing | Pure function + CLI glue later |
 | S-3 | **zxcvbn entropy warning** (60-bit floor, warn-don't-block) | [UC-02](docs/specs/UC-02-csprng-generation.md) | nothing | Wraps the zxcvbn crate |
 | S-4 | **`vault tune`** — RFC 9106 memory-first proportional scaling, median-of-3 | [UC-11](docs/specs/UC-11-kdf-calibration.md) | CP-2 (kdf fn) | Benchmark harness can start against raw argon2 |
@@ -123,6 +128,20 @@ below keeps review load natural. Lanes are a default, not a law — swap via the
   interfaces; then CP-5 CLI against the frozen core API; S-6/S-7/S-10 behind it.
 - **Sync points:** ① Gate 0 sign-off (both) · ② CP-1 format freeze · ③ CP-4 core API freeze ·
   ④ CP-7 audit (both).
+
+---
+
+## Hardening backlog (Part 2 — candidate constraints C35+) *(M9)*
+
+Remaining findings from [research/security_coverage_gaps.md](research/security_coverage_gaps.md),
+each to land via its own ADR per [GOVERNANCE.md](GOVERNANCE.md) (they change the unlock/deletion
+model or add process machinery, so they get the two-maintainer + ADR treatment):
+
+- ptrace / `PR_SET_DUMPABLE` live-memory hardening (gap B3; partially designed in UC-14)
+- crypto-shredding semantics + `vault rotate-data-key` (gap C2)
+- recovery-code stanza for all-factors-lost (gap C3)
+- `cargo-vet`, dependency budget (gap D2; SBOM itself ships in CP-6)
+- post-quantum posture statement / hybrid-PQ wrap reservation (gap E1; S-12 padding is adjacent)
 
 ## Out of scope for v1
 

@@ -1,8 +1,10 @@
 //! Error types for `vault-core`.
 //!
 //! Error messages must never include secret material. Note the deliberate ambiguity of
-//! [`Error::HeaderAuth`]: a tampered header and a wrong password produce the *same* error, so the
-//! error cannot be used as an oracle to distinguish the two (constraint C9).
+//! [`Error::HeaderAuth`]: at the stanza-unwrap stage a tampered header and a wrong password produce
+//! the *same* error, so it cannot be used as an oracle to distinguish the two (constraint C9). Once
+//! a stanza has unwrapped successfully (the factor is proven correct), a subsequent header-integrity
+//! failure is unambiguous tampering and uses the distinct [`Error::HeaderTampered`].
 
 use thiserror::Error;
 
@@ -24,8 +26,8 @@ pub enum Error {
     #[error("vault header is corrupt")]
     HeaderCorrupt,
 
-    /// Header HMAC failed: tampered header *or* wrong password — intentionally indistinguishable
-    /// (constraint C9).
+    /// Header authentication failed at the unlock stage: tampered header *or* wrong unlock secret —
+    /// intentionally indistinguishable so it cannot be used as an oracle (constraint C9).
     #[error("header tampered or wrong password")]
     HeaderAuth,
 
@@ -33,9 +35,15 @@ pub enum Error {
     #[error("unsupported KDF algorithm")]
     UnsupportedKdf,
 
-    /// KDF parameters were below the enforced floor or above the safe ceiling
-    /// (constraints C2 and C28).
-    #[error("KDF parameters are outside the safe range (possible hostile or corrupt file)")]
+    /// Header HMAC failed *after* a stanza unwrapped successfully: the factor was valid, so this is
+    /// unambiguous tampering of header fields outside the stanza tag (constraint C9 step 4).
+    #[error("header tampered")]
+    HeaderTampered,
+
+    /// KDF parameters exceed the enforced ceiling, or the KiB→bytes math overflows — never
+    /// legitimate; rejected before any allocation (constraint C2 ceiling). Below-floor params are
+    /// NOT this error: they trigger a warning + upgrade prompt (constraint C2).
+    #[error("KDF parameters exceed safe limits — possible hostile or corrupt file")]
     KdfParamsOutOfRange,
 
     /// An authentication tag on the encrypted body failed (constraints C1, C10).

@@ -1,6 +1,6 @@
 # UC-14 — Survive a compromised-adjacent machine
 
-> **Tech spec** · Draft v0.1 · June 2026
+> **Tech spec** · Draft v0.2 (pending acceptance review; updated for intent v1.3.0–v1.4.0, 2026-06-10) · June 2026
 > **PRD:** [docs/PRD.md](../PRD.md) §5 UC-14 · **Constraints:** C11, C12, C25, C13
 > Where this spec and [`vault_intent.yaml`](../../vault_intent.yaml) disagree, the intent wins.
 
@@ -58,7 +58,7 @@ auto-lock C25) that UC-04/UC-06 own and this spec only wires in.
 The scaffolded aliases are the only legal carriers of secret bytes:
 
 ```rust
-pub type MasterPassword = SecretBox<[u8]>;       // from no-echo prompt/stdin, never argv (gap B1)
+pub type MasterPassword = SecretBox<[u8]>;       // from no-echo prompt/stdin, never argv (C31)
 pub type DataKey        = SecretBox<[u8; 32]>;   // C4
 pub type SecretBuffer   = Zeroizing<Vec<u8>>;    // decrypted payload, wrapped-key plaintext, ikm
 ```
@@ -141,7 +141,7 @@ a comment citing this section.
 ### 3.5 Session surfaces (wired in, owned elsewhere)
 
 - **Clipboard auto-clear (C13)** — design in UC-04: 30 s default (5–300 s), background timer,
-  best-effort clear on SIGTERM, transient/concealed clipboard flags (gap B2). This spec's only
+  best-effort clear on SIGTERM, transient/concealed clipboard flags (C33). This spec's only
   requirement: the clipboard write path takes its bytes from a `SecretBuffer` and zeroizes after
   the OS handoff.
 - **Auto-lock (C25)** — design in UC-06: 300 s idle default (30–3600, 0=off). Lock = drop every

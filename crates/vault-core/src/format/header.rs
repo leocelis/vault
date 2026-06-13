@@ -1,12 +1,11 @@
-//! The plaintext vault header (constraints C7, C8, C9, C28).
+//! The plaintext vault header (constraints C7, C8, C9, C2).
 //!
 //! Byte layout (all multi-byte integers little-endian), authoritative in `docs/FILE_FORMAT.md`:
 //!
 //! ```text
 //! magic[4] | format_version u16 | vault_id[16] | kdf_algorithm u8 |
 //! m_cost u32 | t_cost u32 | p_cost u32 | argon2id_salt[32] | master_seed[32] |
-//! nonce_prefix[16] | header_generation u64 | stanza_count u8 | stanzas[..] |
-//! header_hash[32] | header_hmac[32]
+//! nonce_prefix[16] | stanza_count u8 | stanzas[..] | header_hash[32] | header_hmac[32]
 //! ```
 //!
 //! The header carries only non-secret material (salts and seeds are public); no entry content lives
@@ -57,12 +56,10 @@ pub struct Header {
     pub vault_id: [u8; 16],
     /// File-authoritative KDF parameters (constraint C8).
     pub kdf: KdfParams,
-    /// CSPRNG seed regenerated on every save; salts the per-block HMAC (constraint C10).
+    /// CSPRNG seed regenerated on every body-writing save; salts the per-block HMAC (constraint C10).
     pub master_seed: [u8; 32],
     /// CSPRNG salt for the payload-key HKDF; regenerated on every body write (constraint C1).
     pub nonce_prefix: [u8; 16],
-    /// Monotonic save counter; +1 on every save including header-only ops (constraints C8/C16, G0.3).
-    pub header_generation: u64,
     /// Key-wrapping stanzas (any one unlocks — constraint C5). Bounded to `MAX_STANZAS`.
     pub stanzas: Vec<Stanza>,
     /// Stored keyless SHA-256 over the authenticated span (constraint C9).
@@ -86,7 +83,6 @@ impl Header {
         out.extend_from_slice(&self.kdf.salt);
         out.extend_from_slice(&self.master_seed);
         out.extend_from_slice(&self.nonce_prefix);
-        out.extend_from_slice(&self.header_generation.to_le_bytes());
         out.push(self.stanzas.len() as u8);
         for s in &self.stanzas {
             s.serialize_into(&mut out);
@@ -143,23 +139,24 @@ impl Header {
 
     /// Verify the keyed header HMAC with the data key (constraint C9 step 4, G0.2).
     ///
-    /// Constant-time comparison. On mismatch returns the ambiguous [`Error::HeaderAuth`] — the
-    /// same error a wrong unlock secret produces, so it cannot be used as an oracle.
+    /// Constant-time comparison. This is called *after* a stanza has unwrapped the data key, so the
+    /// unlock factor is already proven valid — a mismatch here is therefore unambiguous tampering of
+    /// the header and returns [`Error::HeaderTampered`] (not the ambiguous stanza-stage error).
     pub fn verify_hmac(&self, data_key: &[u8; 32]) -> Result<()> {
         let expected = self.compute_hmac(data_key);
         if bool::from(expected.ct_eq(&self.header_hmac)) {
             Ok(())
         } else {
-            Err(Error::HeaderAuth)
+            Err(Error::HeaderTampered)
         }
     }
 
     /// Parse and structurally validate a header from untrusted bytes.
     ///
-    /// Performs the keyless steps of the C9 verification order: bounds-checked structural read →
-    /// magic/version (C7) → SHA-256 corruption check (C9 step 1) → KDF floor+ceiling (C28, step 2).
-    /// The keyed `header_hmac` (step 4) is verified later via [`Header::verify_hmac`] once a stanza
-    /// has been unwrapped to the data key (the steps that require the crypto core, group G2).
+    /// Performs the keyless steps of the C9 verification order: bounds-checked structural read
+    /// (constraint C30) → magic/version (C7) → SHA-256 corruption check (C9 step 1) → KDF ceiling
+    /// (C2, step 2). The keyed `header_hmac` (step 4) is verified later via [`Header::verify_hmac`]
+    /// once a stanza has been unwrapped to the data key (the steps that require the crypto core).
     pub fn parse(bytes: &[u8]) -> Result<Header> {
         let mut cur = Cursor::new(bytes);
 
@@ -183,7 +180,6 @@ impl Header {
         let salt = cur.take_array::<32>()?;
         let master_seed = cur.take_array::<32>()?;
         let nonce_prefix = cur.take_array::<16>()?;
-        let header_generation = cur.read_u64_le()?;
         let stanza_count = cur.read_u8()?;
         let stanzas = stanza::parse_all(&mut cur, stanza_count)?;
 
@@ -200,7 +196,8 @@ impl Header {
             return Err(Error::HeaderCorrupt);
         }
 
-        // C9 step 2 / C28: reject KDF params outside floor+ceiling before any Argon2id allocation.
+        // C2 step 2: reject above-ceiling KDF params before any Argon2id allocation. Below-floor
+        // params are accepted here (the open flow warns + offers an upgrade — constraint C2).
         validate_kdf_params(m_cost, t_cost, p_cost)?;
 
         Ok(Header {
@@ -215,7 +212,6 @@ impl Header {
             },
             master_seed,
             nonce_prefix,
-            header_generation,
             stanzas,
             header_hash,
             header_hmac,
@@ -242,7 +238,6 @@ mod tests {
             },
             master_seed: [0x33; 32],
             nonce_prefix: [0x44; 16],
-            header_generation: 7,
             stanzas: vec![Stanza {
                 stanza_type: kind::PASSWORD,
                 data: vec![0x55; 72],
@@ -318,9 +313,9 @@ mod tests {
     }
 
     #[test]
-    fn out_of_range_kdf_rejected_after_valid_hash() {
-        // C28: build a header with an out-of-ceiling m_cost, with a VALID hash over it, and assert
-        // the KDF range check (not the hash) rejects it.
+    fn above_ceiling_kdf_rejected_after_valid_hash() {
+        // C2 ceiling: a header with an out-of-ceiling m_cost and a VALID hash over it is rejected by
+        // the KDF range check (not the hash).
         let mut h = sample_header();
         h.kdf.m_cost = crate::crypto::ARGON2_CEILING_M_COST_KIB + 1;
         h.seal(&[0xAB; 32]); // valid hash over the hostile params
@@ -335,8 +330,11 @@ mod tests {
         // C9/G0.2: header_hmac verifies with the data key — no password/Argon2id involved.
         let h = sample_header();
         assert!(h.verify_hmac(&[0xAB; 32]).is_ok());
-        // Wrong data key → the same ambiguous HeaderAuth error.
-        assert!(matches!(h.verify_hmac(&[0xAC; 32]), Err(Error::HeaderAuth)));
+        // Wrong data key (or tampered header) → unambiguous HeaderTampered (factor already valid).
+        assert!(matches!(
+            h.verify_hmac(&[0xAC; 32]),
+            Err(Error::HeaderTampered)
+        ));
     }
 
     #[test]

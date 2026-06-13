@@ -1,7 +1,7 @@
 # Vault — Product Requirements Document (PRD)
 
 > **Status:** Draft v0.1 · June 2026 · pre-alpha (no functional release yet)
-> **Sources of truth:** [`vault_intent.yaml`](../vault_intent.yaml) (27 testable constraints),
+> **Sources of truth:** [`vault_intent.yaml`](../vault_intent.yaml) (34 testable constraints),
 > [`research/vault_spec.md`](../research/vault_spec.md),
 > [`research/llm_offensive_threats.md`](../research/llm_offensive_threats.md),
 > [`research/security_coverage_gaps.md`](../research/security_coverage_gaps.md).
@@ -144,13 +144,14 @@ hardware never loses the vault. TPM PCR drift after a firmware update produces a
 message and a `vault re-enroll-tpm` path, not a lockout.
 
 ### UC-10 · Open a stale or hostile vault file safely
-**Persona:** all · **Constraints:** C2, C7, C8, C9, A1 (candidate C28)
+**Persona:** all · **Constraints:** C2 (incl. ceiling), C7, C8, C9
 
 Vault treats its own file as untrusted input. Bad magic → "not a vault file". Newer format
 version → clear upgrade message. KDF params below the OWASP floor → prominent warning +
 upgrade offer (never silent). KDF params absurdly *high* (a memory-exhaustion trap) →
-rejected before allocation. A tampered header fails the keyed HMAC with an intentionally
-ambiguous "header tampered or wrong password" — no oracle. Parsers are fuzzed in CI.
+rejected before allocation. Tampered KDF params and a wrong password both fail the stanza
+unwrap with one intentionally ambiguous "invalid credentials or tampered header" — no oracle;
+the data-key-keyed header HMAC then catches any other header tampering. Parsers are fuzzed in CI.
 
 ### UC-11 · Keep KDF cost calibrated as hardware improves
 **Persona:** P2, P5 · **Constraints:** C2, C22, C8
@@ -250,17 +251,20 @@ attacks, social engineering of the user.
 
 Mapped to [ROADMAP](../ROADMAP.md): M2 file format → M3 crypto core → M4 memory hardening
 → M5 read/write + rollback → M6 CLI (UC-1…8, 10–12) → M7 hardware stanzas (UC-9) → M8
-distribution & trust (UC-13) → M9 hardening backlog (C28+ candidates from
+distribution & trust (UC-13) → M9 hardening backlog (C35+ Part-2 candidates from
 [security_coverage_gaps](../research/security_coverage_gaps.md)) → M10 audit → v1.0.
 
 ## 9. Open questions
 
-1. **Candidate constraints C28+** — KDF parameter ceiling (A1), "no secrets on argv" (B1),
-   ANSI-injection-safe output (A2): promote which of the 18 documented gaps into the intent
-   before M2 freeze?
+1. **Candidate constraints C28+** — ✅ resolved 2026-06-10 (intent v1.3.0): the high-severity
+   batch was promoted — ANSI-safe output (A2→C28), export escaping (A3→C29), parser
+   robustness (A4→C30), no-secrets-on-argv (B1→C31), atomic saves (C1→C32), clipboard
+   concealment (B2→C33), signed releases (D1→C34); KDF ceiling (A1) and Unicode NFC (E2)
+   folded into C2. The remaining gaps (B3, C2, C3, D2, E1) are the Part-2 backlog (C35+),
+   each via its own ADR — see [ROADMAP](../ROADMAP.md).
 2. **Import breadth at launch** — ship pass/KeePassXC importers in v1 (P3 acquisition) or
    defer to M9?
 3. **Naming/positioning** — "credential vault" vs the broader "security layer for the AI
    era" as scope grows post-1.0 (files, databases, app secrets).
-4. **Clipboard on Wayland/headless** — clipboard-default (C27) needs a defined fallback
-   where no clipboard exists; candidate: refuse with guidance toward `--stdout`.
+4. **Clipboard on Wayland/headless** — ✅ resolved 2026-06-10 (intent v1.4.0): C27 mandates
+   refusal with exit code 7 and guidance toward `--stdout`; never a silent stdout fallback.

@@ -2,7 +2,7 @@
 
 A security tool you can't verify is a security tool you have to *trust*. Vault releases are
 **reproducible**, **keylessly signed with Sigstore cosign**, and accompanied by **SLSA build
-provenance** and SHA-256 checksums. Here's how to check what you downloaded. *(coverage-gap D1)*
+provenance** and SHA-256 checksums. Here's how to check what you downloaded. *(constraint C34)*
 
 > Applies to tagged releases once the build/release pipeline (`.github/workflows/release.yml`) runs.
 > Pre-alpha has no releases yet.

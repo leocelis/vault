@@ -1,6 +1,6 @@
 # UC-06 — Find and Manage Entries Day-to-Day
 
-> **Tech spec** · Draft v0.1 · June 2026
+> **Tech spec** · Draft v0.2 (pending acceptance review; updated for intent v1.3.0–v1.4.0, 2026-06-10) · June 2026
 > **PRD:** [docs/PRD.md](../PRD.md) §5 UC-6 · **Constraints:** C21, C25, C18 via SC2; C11, C13
 > Where this spec and [`vault_intent.yaml`](../../vault_intent.yaml) disagree, the intent wins.
 
@@ -157,7 +157,7 @@ as new constraints, not as a quiet feature.
 
 ### 3.5 `vault rm NAME`
 
-1. Resolve entry (exact title; if multiple/ambiguous after A2-sanitized listing → exit 3).
+1. Resolve entry (exact title; if multiple/ambiguous after C28-sanitized listing → exit 9).
 2. TTY: prompt `Delete entry 'github-prod'? This cannot be undone. [y/N]` — default **No**.
    Non-TTY: require `--yes` (UC-05 §3.3 matrix; exit 2 without it).
 3. Remove from the in-memory entry set, save atomically, `vault_version += 1` (C16).
@@ -198,7 +198,7 @@ pub struct Config {
 
 | Condition | Behavior |
 |---|---|
-| Search with locked vault | Unlock prompt (TTY) or exit 4 (non-TTY, UC-05 matrix) |
+| Search with locked vault | Unlock prompt (TTY) or exit 5 (non-TTY, UC-05 matrix) |
 | `edit` interrupted (SIGINT) mid-flow | No partial save; in-memory buffers zeroized on unwind; original entry intact |
 | `--editor` returns empty file / parse failure | Abort with message; entry unchanged; shm file shredded regardless |
 | Config parse error / out-of-range | Exit 2, name the key, show legal range; never half-apply a config |

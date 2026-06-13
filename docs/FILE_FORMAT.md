@@ -1,6 +1,6 @@
 # Vault File Format (`.vlt`) — v1
 
-> Authoritative spec: constraints **C1, C7–C10, C16, C18, C19, C28** in [vault_intent.yaml](../vault_intent.yaml).
+> Authoritative spec: constraints **C1, C7–C10, C18, C19, C30, C32** in [vault_intent.yaml](../vault_intent.yaml).
 > This document is the human-readable rendering. All multi-byte integers are **little-endian**.
 
 ## Top-level layout
@@ -15,20 +15,18 @@
 │ argon2id_t_cost  u32                                      │
 │ argon2id_p_cost  u32                                      │
 │ argon2id_salt    [32]  CSPRNG, fixed at creation          │  C8
-│ master_seed      [32]  CSPRNG, regenerated every save     │  C8/C10
+│ master_seed      [32]  CSPRNG, regenerated every body write│  C8/C10 (block-HMAC salt, YubiKey challenge)
 │ nonce_prefix     [16]  CSPRNG, regenerated every body write│  C1/C8  (HKDF salt for payload key)
-│ header_generation u64  +1 on EVERY save (incl. header-only)│  C8/C16 (rollback anchor)
 │ stanza_count     u8    1..=8                               │  C5
 │ stanzas          [..]  stanza_count × stanza_record       │  C5
 │ header_hash      [32]  SHA-256(all bytes above)           │  C9  (corruption, no key)
-│ header_hmac      [32]  HMAC-SHA-256(above,                │  C9  (tamper / KDF-downgrade;
-│                        key=HKDF(data_key))                │   unlock-path-agnostic — G0.2)
+│ header_hmac      [32]  HMAC-SHA-256(above, key=HKDF(dk))  │  C9  (tamper; data-key-keyed)
 └───────────────────────────────────────────────────────────┘
 ┌──────────────────── encrypted body ──────────────────────┐
 │ HmacBlockStream of 1 MiB blocks, each:                    │  C10
 │   [hmac 32][size u32][ciphertext size]                    │
 │   wrapping the XChaCha20-Poly1305 STREAM (64 KiB chunks)  │  C1
-│     └─ inner header (inner stream key, regen per open)    │  C19
+│     └─ inner header (inner stream key, regen per save)    │  C19
 │     └─ vault_version  u64  (monotonic counter)            │  C16
 │     └─ entries: ALL fields encrypted (incl. URLs/titles)  │  C18
 └───────────────────────────────────────────────────────────┘
@@ -56,19 +54,31 @@ version counter — lives inside the AEAD body.** (C18)
 ## Verification order on open (never skip)
 
 1. `header_hash` (fast, keyless) → reject corrupt files cheaply.
-2. **Reject KDF params outside floor *and* ceiling** before running Argon2id (C2, C28).
-3. Derive the stanza secret for the chosen unlock path (Argon2id for password; hardware/OS
-   for other stanza types) → unwrap `data_key` from that stanza (Poly1305-authenticated).
-4. `header_hmac` (keyed from `data_key` — works for any unlock path) → abort on mismatch,
-   decrypt nothing. Stanza-unwrap failure and HMAC failure emit the **same** ambiguous error.
-5. Rollback anchors: `header_generation` (header) and `vault_version` (payload) vs local state (C16).
-6. Per-block HMAC → per-chunk AEAD tag → only then release plaintext.
+2. **Reject KDF params outside floor *and* ceiling** before running Argon2id (C2 — the ceiling
+   check must precede the KDF because step 3 *requires* the KDF on the password path).
+3. Unwrap the data key from any valid stanza (password path: Argon2id with the file's params;
+   a wrong password or tampered KDF params fail HERE, at the stanza's Poly1305 tag — one
+   indistinguishable "invalid credentials or tampered header" error).
+4. Verify `header_hmac` with the **data-key-derived** key (HKDF, `info="vault-header-hmac-v2"`) —
+   verifiable on every unlock path, including hardware-only (C9/G0.2). Abort on mismatch
+   ("header tampered"), decrypt nothing.
+5. Per-block HMAC (data-key-keyed, `info="vault-block-hmac-v2"`) → per-chunk AEAD tag → only
+   then release plaintext.
 
-## Hardening rules for the parser
+## Writing (atomic saves — C32)
+
+Saves are never in place: serialize to a temp file in the same directory → `fsync` → preserve the
+previous generation as `vault.vlt.bak` → atomic `rename` → `fsync` the directory → verify the new
+file, then remove the backup (or keep it with `keep_backup = true`). An advisory lock is held for
+the unlock session; a second writer fails fast. Temp file and `.bak` are the only other files ever
+created next to the vault, and both are equally opaque encrypted blobs (C17).
+
+## Hardening rules for the parser (C30)
 
 - Bound every length field against the remaining buffer **before** allocating.
 - Reject `stanza_count > 8`, `stanza_data_len > 4096`, and any integer overflow in size math.
-- The parser is **fuzzed** (`fuzz/`) and must never panic, hang, or over-allocate on hostile input.
+- The parser is **fuzzed** (`fuzz/`, run in CI) and must never panic, hang, or over-allocate on
+  hostile input; `vault-core` is `#![forbid(unsafe_code)]` outside the vetted syscall wrappers.
 
 ## Versioning
 

@@ -1,7 +1,7 @@
 # Cryptographic Design
 
 This is a reader's summary. The **authoritative, testable** specification is
-[vault_intent.yaml](../vault_intent.yaml) (constraints C1–C6, C9–C10, C25, C28); the research rationale
+[vault_intent.yaml](../vault_intent.yaml) (constraints C1–C6, C9–C10, C25); the research rationale
 is in [research/vault_spec.md](../research/vault_spec.md).
 
 ## Primitives (audited libraries only — constraint C3)
@@ -40,11 +40,14 @@ master password ──Argon2id(salt, m,t,p)──▶ master_key
   nonce-reuse cliff. STREAM chunks are location-bound (no reorder/truncate/splice).
 - **Argon2id over Argon2d/PBKDF2**: memory-hard *and* side-channel-resistant (the KeePassXC auditor's
   explicit recommendation). The **floor is enforced on every open** so a downgraded file is caught;
-  a **ceiling** (coverage-gap A1) rejects hostile/overflowing params *before* allocation.
+  the **ceiling** (also C2) rejects hostile/overflowing params *before* any allocation — necessarily
+  before the keyed header HMAC, which can't be verified until the KDF has run.
+- **NFC normalization of the master password** (C2): macOS keyboards commonly emit NFD where Linux
+  emits NFC; without normalization the same typed password derives different keys per platform.
 - **KDBX-4-style integrity**: unauthenticated `SHA-256(header)` for fast corruption detection, plus
-  data-key-**keyed** `HMAC-SHA-256(header)` so an attacker can't downgrade the KDF undetected —
-  keyed from the data key (not the password-derived master key) so hardware-only unlocks can
-  verify the header too (G0.2, intent v1.3.0).
+  a **data-key-keyed** `HMAC-SHA-256(header)` verifiable on every unlock path — including
+  hardware-only — and stable across password rotation (G0.2). KDF downgrade is caught by the
+  password stanza's AEAD tag (tampered params ⇒ wrong wrapping key ⇒ unwrap fails).
 
 ## What we deliberately do *not* do
 

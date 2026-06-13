@@ -1,9 +1,9 @@
-//! On-disk file format and integrity — constraints **C7–C10, C18, C19, C28**.
+//! On-disk file format and integrity — constraints **C7–C10, C18, C19, C2, C30**.
 //!
 //! This module parses **untrusted bytes** (a synced or restored vault file). It must never panic,
 //! hang, or over-allocate on hostile input: every length field is bounded against the remaining
 //! buffer *before* allocation (via [`cursor::Cursor`]), and KDF params are range-checked *before*
-//! Argon2id runs. The parsers here are the primary targets in `fuzz/` (coverage-gap A4).
+//! Argon2id runs. The parsers here are the primary targets in `fuzz/` (constraint C30).
 //!
 //! See `docs/FILE_FORMAT.md` for the byte layout.
 

@@ -2,7 +2,7 @@
 //!
 //! Every read is checked against the remaining input before it happens, so a truncated or hostile
 //! file yields a clean [`Error::HeaderCorrupt`] instead of a panic or an over-read. This is the
-//! foundation of the hardened-parser posture (constraints C7–C10, coverage-gap A4): the format
+//! foundation of the hardened-parser posture (constraints C7–C10, C30): the format
 //! parsers never index past the slice and never allocate based on an unchecked length.
 
 use crate::{Error, Result};
