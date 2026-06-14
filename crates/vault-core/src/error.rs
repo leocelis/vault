@@ -46,6 +46,11 @@ pub enum Error {
     #[error("KDF parameters exceed safe limits — possible hostile or corrupt file")]
     KdfParamsOutOfRange,
 
+    /// An internal cryptographic operation failed unexpectedly (e.g. a KDF or AEAD primitive
+    /// returned an error for non-secret structural reasons). Carries no secret material.
+    #[error("internal cryptographic error")]
+    Crypto,
+
     /// An authentication tag on the encrypted body failed (constraints C1, C10).
     #[error("authentication failed while decrypting the vault body")]
     BodyAuth,

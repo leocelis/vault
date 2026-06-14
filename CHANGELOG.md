@@ -25,6 +25,11 @@ All notable changes to this project are documented here. The format is based on
   encryption deferred to the crypto segment); Argon2id floor+ceiling validation; `data_key`-keyed
   integrity; and **four** fuzz targets wired to the real parsers (constraints `C2`, `C5`, `C7`–`C10`,
   `C18`, `C19`, `C30`). 45 unit tests; `fmt` + `clippy -D warnings` clean on the pinned toolchain.
+- **CP-2 cryptographic core (part 1)** in `vault-core`: Argon2id KDF with Unicode-**NFC** password
+  normalization for cross-platform key stability (`C2`), a shared HKDF-SHA-256 helper, CSPRNG
+  data-key generation (`C4`), and the **password-stanza envelope** — wrap/unwrap the data key via
+  `HKDF → XChaCha20-Poly1305` with an ambiguous wrong-password error and the data key never stored
+  in plaintext (`C5`). Adds the `unicode-normalization` dependency (MIT/Apache). 53 unit tests total.
 - **Project-scoped Rust toolchain** ([`scripts/setup-rust.sh`](scripts/setup-rust.sh),
   [`scripts/dev-env.sh`](scripts/dev-env.sh), [`.envrc`](.envrc)): the toolchain installs into
   `./.toolchain` (git-ignored) via rustup's `RUSTUP_HOME`/`CARGO_HOME` + `--no-modify-path` — never

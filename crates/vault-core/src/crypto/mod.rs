@@ -6,6 +6,23 @@
 
 use crate::{Error, Result};
 
+use hkdf::Hkdf;
+use sha2::Sha256;
+
+pub mod kdf;
+
+/// HKDF-SHA-256 to a 32-byte key. Shared by the envelope (C5) and the integrity layers (C9/C10).
+///
+/// An empty `salt` slice is RFC-5869 valid (treated as a zero-filled salt). The output length (32)
+/// is always a valid HKDF-SHA-256 length, so expansion cannot fail.
+pub fn hkdf32(ikm: &[u8], salt: &[u8], info: &[u8]) -> [u8; 32] {
+    let hk = Hkdf::<Sha256>::new(Some(salt), ikm);
+    let mut okm = [0u8; 32];
+    hk.expand(info, &mut okm)
+        .expect("32 is a valid HKDF-SHA-256 output length");
+    okm
+}
+
 /// STREAM chunk size: 64 KiB (constraint C1).
 pub const STREAM_CHUNK_SIZE: usize = 64 * 1024;
 
@@ -90,9 +107,6 @@ pub fn validate_kdf_params(m_cost: u32, t_cost: u32, p_cost: u32) -> Result<KdfS
 ///
 /// Each 64 KiB chunk is independently sealed; no plaintext is released before its tag verifies.
 pub mod stream {}
-
-/// Argon2id key derivation (constraint C2).
-pub mod kdf {}
 
 #[cfg(test)]
 mod tests {
