@@ -26,6 +26,7 @@
 pub mod crypto; // C1–C3   cipher, KDF, primitives
 pub mod envelope; // C4–C6   data key + multi-stanza envelope
 pub mod format; // C7–C10  on-disk format + integrity
+pub mod import; // UC-17   lenient keys.txt parser
 pub mod memory; // C11–C13, C25  secret types, mlock, constant-time
 pub mod rollback; // C16     monotonic counter + local anchor
 mod vault; // open/save orchestration (the v0 vault-core API)

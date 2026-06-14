@@ -1,0 +1,50 @@
+# =============================================================================
+#  SAMPLE keys.txt — SYNTHETIC TEST DATA. NOT REAL CREDENTIALS.
+#
+#  Every value below is randomly generated and marked FAKE/EXAMPLE. It exists so
+#  `vault import --format raw` can be exercised against a realistically messy file.
+#  Do NOT put real secrets in a committed file. Lines starting with '#' are ignored
+#  by the importer.
+#
+#  Try:   vault import --format raw samples/keys.txt
+# =============================================================================
+
+AWS_ACCESS_KEY_ID=AKIAEXAMPLE7F4QX9TZ2P
+AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEYfake
+region: us-east-1
+
+---
+
+github
+ghp_FAKE0mZ9xQ2vL7nR4tW8pY1aB3cD5eF6gH7iJ
+note: personal access token (classic)
+
+---
+
+openai
+sk-proj-FAKEa1B2c3D4e5F6g7H8i9J0kLmNoPqRsTuVwXyZ012345
+
+stripe (test mode)
+sk_test_FAKE51H8xQ2vL7nR4tW8pY1aB3cD5eF6gH7iJ8k
+
+---
+
+# a bare token with no label at all
+glpat-FAKExZ9y8W7v6U5t4S3r2Q1p
+
+---
+
+db-prod
+postgres://appuser:s3cr3tP4ssw0rd9f3a@db.internal:5432/appdb
+
+home wifi
+correcthorsebatterystaple
+
+---
+
+age backup key
+AGE-SECRET-KEY-1FAKE7QX9TZ2PWJALRXUTNFEMIK7MDENGBPXRFICYE0MZ9XQ2VW7H
+
+slack-bot
+xoxb-FAKE-1111111111-2222222222-aBcDeFgHiJkLmNoPqRsTuVwX
+channel: #alerts

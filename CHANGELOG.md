@@ -37,6 +37,16 @@ All notable changes to this project are documented here. The format is based on
   **C18 "`strings` reveals nothing" property is now verified end-to-end**; body tamper → `BodyAuth`,
   wrong password → ambiguous `HeaderAuth`. (C19 inner-stream pass deferred; outer AEAD secures at
   rest.) 65 unit tests total; fmt + clippy clean.
+- **`keys.txt` migration MVP — end to end.** A lenient importer in `vault-core`
+  ([`import::parse_raw`](crates/vault-core/src/import.rs), UC-17): splits a messy file on blank
+  lines / `---`, skips `#` comments, classifies each line as secret (provider prefix or Shannon
+  entropy) vs label, and builds `Entry` values — shared by the CLI and the future desktop app. Plus
+  a working **CLI** (`vault init` / `import --format raw` / `ls [--search]` / `get [--stdout]`):
+  no-echo password prompt (`rpassword`, no secrets on argv — C29), atomic `0600` file writes,
+  masked import review (C27), clipboard delivery via the OS tool over stdin (C27), terminal output
+  sanitization (C30). A synthetic [`samples/keys.txt`](samples/keys.txt) fixture exercises it.
+  Verified end-to-end on a real file: 9 messy entries imported, searchable, retrievable, and the
+  encrypted `.vlt` leaks neither titles nor secrets (C18).
 - **Project-scoped Rust toolchain** ([`scripts/setup-rust.sh`](scripts/setup-rust.sh),
   [`scripts/dev-env.sh`](scripts/dev-env.sh), [`.envrc`](.envrc)): the toolchain installs into
   `./.toolchain` (git-ignored) via rustup's `RUSTUP_HOME`/`CARGO_HOME` + `--no-modify-path` — never
