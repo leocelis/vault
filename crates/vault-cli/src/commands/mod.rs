@@ -26,7 +26,9 @@ pub fn dispatch(vault_opt: Option<PathBuf>, command: Command) -> CmdResult {
             name,
             field,
             stdout,
-        } => cmd_get(&vault_path(vault_opt)?, &name, &field, stdout),
+            timeout,
+        } => cmd_get(&vault_path(vault_opt)?, &name, &field, stdout, timeout),
+        Command::HoldClipboard { secs } => run_clipboard_holder(secs),
         Command::Add { .. }
         | Command::Gen { .. }
         | Command::Edit { .. }
@@ -121,7 +123,7 @@ fn cmd_ls(path: &Path, search: Option<&str>) -> CmdResult {
     Ok(())
 }
 
-fn cmd_get(path: &Path, name: &str, field: &str, stdout: bool) -> CmdResult {
+fn cmd_get(path: &Path, name: &str, field: &str, stdout: bool, timeout: u64) -> CmdResult {
     if field != "password" {
         return Err("only the `password` field is supported in this version".to_string());
     }
@@ -144,10 +146,13 @@ fn cmd_get(path: &Path, name: &str, field: &str, stdout: bool) -> CmdResult {
             .and_then(|_| std::io::stdout().write_all(b"\n"))
             .map_err(|e| e.to_string())?;
     } else {
-        deliver_to_clipboard(secret)?;
-        eprintln!(
-            "Copied {name:?} to the clipboard (model-blind). It stays until you copy something else."
-        );
+        copy_to_clipboard(secret)?;
+        spawn_clipboard_holder(secret, timeout)?; // C13: auto-clear, clears iff unchanged
+        if timeout == 0 {
+            eprintln!("Copied {name:?} to the clipboard (model-blind).");
+        } else {
+            eprintln!("Copied {name:?} to the clipboard (model-blind). Clears in {timeout}s.");
+        }
     }
 
     // A tiny convenience: note any extra secret fields the entry carries.
@@ -237,9 +242,9 @@ fn confirm(question: &str) -> Result<bool, String> {
     Ok(matches!(s.trim().to_lowercase().as_str(), "y" | "yes"))
 }
 
-/// Deliver a secret to the OS clipboard via the platform tool, secret passed on **stdin** (never
-/// argv — C29). Model-blind: the secret never goes to this process's stdout (C27).
-fn deliver_to_clipboard(secret: &[u8]) -> CmdResult {
+/// Write `data` to the OS clipboard via the platform tool, passed on **stdin** (never argv — C29).
+/// Used both to deliver a secret and (with empty `data`) to clear the clipboard.
+fn copy_to_clipboard(data: &[u8]) -> CmdResult {
     let candidates: &[(&str, &[&str])] = if cfg!(target_os = "macos") {
         &[("pbcopy", &[])]
     } else if cfg!(target_os = "windows") {
@@ -263,13 +268,85 @@ fn deliver_to_clipboard(secret: &[u8]) -> CmdResult {
             Err(_) => continue, // tool not installed; try the next
         };
         if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(secret).map_err(|e| e.to_string())?;
+            stdin.write_all(data).map_err(|e| e.to_string())?;
         }
         if child.wait().map_err(|e| e.to_string())?.success() {
             return Ok(());
         }
     }
     Err("no clipboard tool found (install pbcopy / wl-copy / xclip), or use --stdout".to_string())
+}
+
+/// Read the current clipboard contents via the platform tool, if available.
+fn read_clipboard() -> Option<Vec<u8>> {
+    let candidates: &[(&str, &[&str])] = if cfg!(target_os = "macos") {
+        &[("pbpaste", &[])]
+    } else if cfg!(target_os = "windows") {
+        &[("powershell", &["-NoProfile", "-Command", "Get-Clipboard"])]
+    } else {
+        &[
+            ("wl-paste", &["--no-newline"]),
+            ("xclip", &["-selection", "clipboard", "-o"]),
+            ("xsel", &["-b", "-o"]),
+        ]
+    };
+    for (cmd, args) in candidates {
+        if let Ok(out) = std::process::Command::new(cmd)
+            .args(*args)
+            .stderr(Stdio::null())
+            .output()
+        {
+            if out.status.success() {
+                return Some(out.stdout);
+            }
+        }
+    }
+    None
+}
+
+/// Spawn a **detached** helper that clears the clipboard after `timeout` seconds — but only if the
+/// clipboard still holds our secret (UC-04 / C13). The secret reaches the helper over an inherited
+/// stdin pipe, never argv or environment (C29); the parent returns immediately.
+fn spawn_clipboard_holder(secret: &[u8], timeout: u64) -> CmdResult {
+    if timeout == 0 {
+        return Ok(());
+    }
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let mut child = std::process::Command::new(exe)
+        .arg("hold-clipboard")
+        .arg(timeout.to_string())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(secret).map_err(|e| e.to_string())?;
+    }
+    // Do NOT wait: the child runs detached and the parent exits; init reaps it after it clears.
+    Ok(())
+}
+
+/// The detached holder (internal subcommand): read the secret on stdin, sleep, then clear the
+/// clipboard iff it is still byte-for-byte our secret (tolerating a trailing newline some tools add).
+fn run_clipboard_holder(secs: u64) -> CmdResult {
+    let mut secret: Zeroizing<Vec<u8>> = Zeroizing::new(Vec::new());
+    std::io::stdin().read_to_end(&mut secret).ok();
+    if secs == 0 || secret.is_empty() {
+        return Ok(());
+    }
+    std::thread::sleep(std::time::Duration::from_secs(secs));
+    if let Some(cur) = read_clipboard() {
+        let cur = Zeroizing::new(cur);
+        let (cur_s, sec_s): (&[u8], &[u8]) = (&cur, &secret);
+        let unchanged = cur_s == sec_s
+            || cur_s.strip_suffix(b"\n") == Some(sec_s)
+            || cur_s.strip_suffix(b"\r\n") == Some(sec_s);
+        if unchanged {
+            let _ = copy_to_clipboard(&[]); // clear — still ours
+        }
+    }
+    Ok(())
 }
 
 /// Mask a secret for review: first/last 4 chars + length, never the middle.

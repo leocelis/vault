@@ -47,6 +47,10 @@ All notable changes to this project are documented here. The format is based on
   sanitization (C30). A synthetic [`samples/keys.txt`](samples/keys.txt) fixture exercises it.
   Verified end-to-end on a real file: 9 messy entries imported, searchable, retrievable, and the
   encrypted `.vlt` leaks neither titles nor secrets (C18).
+- **Clipboard auto-clear (C13 / UC-04).** `vault get` spawns a **detached holder** that wipes the
+  clipboard after `--timeout` seconds (default 30) — but only if it still holds the delivered secret
+  (clears-iff-unchanged, so it won't erase something you copied since). The secret reaches the holder
+  over an inherited stdin pipe, never argv or environment (C29). Verified live on macOS.
 - **Project-scoped Rust toolchain** ([`scripts/setup-rust.sh`](scripts/setup-rust.sh),
   [`scripts/dev-env.sh`](scripts/dev-env.sh), [`.envrc`](.envrc)): the toolchain installs into
   `./.toolchain` (git-ignored) via rustup's `RUSTUP_HOME`/`CARGO_HOME` + `--no-modify-path` — never

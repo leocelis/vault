@@ -52,6 +52,9 @@ enum Command {
         /// Print the secret to stdout (WARNING: readable by other processes / AI agents).
         #[arg(long)]
         stdout: bool,
+        /// Seconds before the clipboard auto-clears (0 = never). Constraint C13.
+        #[arg(long, default_value_t = 30)]
+        timeout: u64,
     },
     /// Add an entry. Secrets are read interactively, never from a flag. *(not yet implemented)*
     Add { name: String },
@@ -72,6 +75,10 @@ enum Command {
     Lock,
     /// Benchmark and recommend Argon2id parameters (constraint C22). *(not yet implemented)*
     Tune,
+    /// Internal: detached clipboard auto-clear helper. Reads the secret on stdin; not for direct
+    /// use (constraint C13 / UC-04).
+    #[command(hide = true)]
+    HoldClipboard { secs: u64 },
 }
 
 fn main() -> std::process::ExitCode {
