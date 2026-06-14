@@ -10,6 +10,7 @@ use hkdf::Hkdf;
 use sha2::Sha256;
 
 pub mod kdf;
+pub mod stream;
 
 /// HKDF-SHA-256 to a 32-byte key. Shared by the envelope (C5) and the integrity layers (C9/C10).
 ///
@@ -102,11 +103,6 @@ pub fn validate_kdf_params(m_cost: u32, t_cost: u32, p_cost: u32) -> Result<KdfS
         Ok(KdfStrength::BelowRecommended)
     }
 }
-
-/// Encrypt a payload with XChaCha20-Poly1305 in STREAM mode (constraint C1).
-///
-/// Each 64 KiB chunk is independently sealed; no plaintext is released before its tag verifies.
-pub mod stream {}
 
 #[cfg(test)]
 mod tests {

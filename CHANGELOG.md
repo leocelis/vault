@@ -30,6 +30,13 @@ All notable changes to this project are documented here. The format is based on
   data-key generation (`C4`), and the **password-stanza envelope** — wrap/unwrap the data key via
   `HKDF → XChaCha20-Poly1305` with an ambiguous wrong-password error and the data key never stored
   in plaintext (`C5`). Adds the `unicode-normalization` dependency (MIT/Apache). 53 unit tests total.
+- **CP-2 part 2 + vault round-trip** — XChaCha20-Poly1305 **STREAM** payload encryption (age
+  construction: 64 KiB chunks, 11-byte-counter‖last-flag nonce, per-save `nonce_prefix` HKDF salt —
+  `C1`), and the `Vault` orchestration (`create`/`open`/`save` + `search`/`get`) tying header +
+  envelope + STREAM + HmacBlockStream + payload into a working encrypted `.vlt` round-trip. The
+  **C18 "`strings` reveals nothing" property is now verified end-to-end**; body tamper → `BodyAuth`,
+  wrong password → ambiguous `HeaderAuth`. (C19 inner-stream pass deferred; outer AEAD secures at
+  rest.) 65 unit tests total; fmt + clippy clean.
 - **Project-scoped Rust toolchain** ([`scripts/setup-rust.sh`](scripts/setup-rust.sh),
   [`scripts/dev-env.sh`](scripts/dev-env.sh), [`.envrc`](.envrc)): the toolchain installs into
   `./.toolchain` (git-ignored) via rustup's `RUSTUP_HOME`/`CARGO_HOME` + `--no-modify-path` — never
