@@ -20,9 +20,11 @@ All notable changes to this project are documented here. The format is based on
   (Signal/UniFFI pattern); `ratatui` → `egui` → SwiftUI; copy-not-display delivery — `UC-18`.
 - Quick-capture import of an unstructured secrets file with masked interactive review — `UC-17`.
 - **CP-1 file-format core** implemented in `vault-core`: hardened, bounded header / stanza /
-  HmacBlockStream parsers, Argon2id floor+ceiling validation, `data_key`-keyed integrity, and the
-  three fuzz targets wired to the real parsers (constraints `C2`, `C5`, `C7`–`C10`, `C30`). 30 unit
-  tests; `fmt` + `clippy -D warnings` clean on the pinned toolchain.
+  HmacBlockStream parsers; the bounded TLV **entry/payload model** (`Entry`, `Payload`, and a
+  zeroizing/redacted/constant-time `Protected` type — the C18/C19 structure, inner-stream
+  encryption deferred to the crypto segment); Argon2id floor+ceiling validation; `data_key`-keyed
+  integrity; and **four** fuzz targets wired to the real parsers (constraints `C2`, `C5`, `C7`–`C10`,
+  `C18`, `C19`, `C30`). 45 unit tests; `fmt` + `clippy -D warnings` clean on the pinned toolchain.
 - **Project-scoped Rust toolchain** ([`scripts/setup-rust.sh`](scripts/setup-rust.sh),
   [`scripts/dev-env.sh`](scripts/dev-env.sh), [`.envrc`](.envrc)): the toolchain installs into
   `./.toolchain` (git-ignored) via rustup's `RUSTUP_HOME`/`CARGO_HOME` + `--no-modify-path` — never

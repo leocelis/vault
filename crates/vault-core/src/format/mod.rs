@@ -9,10 +9,15 @@
 
 pub mod block_stream;
 mod cursor;
+pub mod entry;
 pub mod header;
+pub mod payload;
 pub mod stanza;
+mod tlv;
 
+pub use entry::{CustomField, CustomValue, Entry, Protected};
 pub use header::{Header, KdfParams};
+pub use payload::Payload;
 pub use stanza::Stanza;
 
 /// Maximum number of stanzas in a v1 vault (constraint C5).
