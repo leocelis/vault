@@ -29,8 +29,12 @@ pub fn dispatch(vault_opt: Option<PathBuf>, command: Command) -> CmdResult {
             timeout,
         } => cmd_get(&vault_path(vault_opt)?, &name, &field, stdout, timeout),
         Command::HoldClipboard { secs } => run_clipboard_holder(secs),
+        Command::Gen {
+            length,
+            charset,
+            words,
+        } => cmd_gen(length, &charset, words),
         Command::Add { .. }
-        | Command::Gen { .. }
         | Command::Edit { .. }
         | Command::Rm { .. }
         | Command::Lock
@@ -165,6 +169,27 @@ fn cmd_get(path: &Path, name: &str, field: &str, stdout: bool, timeout: u64) -> 
     if !extras.is_empty() {
         eprintln!("(entry also has protected fields: {})", extras.join(", "));
     }
+    Ok(())
+}
+
+fn cmd_gen(length: usize, charset: &str, words: Option<usize>) -> CmdResult {
+    use vault_core::gen::{entropy_bits, password, Charset};
+    if words.is_some() || charset == "words" {
+        return Err(
+            "the diceware `words` charset needs the EFF wordlist, not bundled yet".to_string(),
+        );
+    }
+    if !(8..=256).contains(&length) {
+        return Err("length must be between 8 and 256".to_string());
+    }
+    let cs = match charset {
+        "alnum" => Charset::Alnum,
+        "ascii" => Charset::Ascii,
+        other => return Err(format!("unknown charset {other:?} (use alnum or ascii)")),
+    };
+    let pw = password(cs, length).map_err(|e| e.to_string())?;
+    println!("{}", &*pw); // the generated password is the command's output
+    eprintln!("({:.0} bits of entropy)", entropy_bits(cs, length));
     Ok(())
 }
 
