@@ -111,8 +111,8 @@ lane can build against from that point on.
 | S-13 | **Agent interface exploration** — handle broker, `vault_use`, OS approval gate | [UC-16](docs/specs/UC-16-agent-interface-future.md) | post-v1 | DESIGN EXPLORATION; never returns plaintext to a model (C27) |
 | S-14 | **User guide & website docs** | all specs | CP-5 | Quickstart, sync guide, threat-model-for-humans |
 | S-15 | **Quick-capture `import --format raw`** — lenient parser, entropy/prefix classifier, masked interactive review | [UC-17](docs/specs/UC-17-quick-capture-raw-import.md) | CP-1 (Entry model) | The messy-`keys.txt` on-ramp; optional `kind` tag wants to land *in* CP-1 |
-| S-16 | **`ratatui` TUI** — search → deliver loop, alt-screen reveal hygiene | [UC-18](docs/specs/UC-18-native-ui.md) | CP-4 API | **post-v1**; first UI, pure Rust, C20-exact |
-| S-17 | **`egui` window** — pure-Rust GUI shell | [UC-18](docs/specs/UC-18-native-ui.md) | CP-4 API | **post-v1**; non-terminal users, still single-binary |
+| S-16 | ✅ **`ratatui` TUI** — search → deliver loop, alt-screen reveal hygiene | [UC-18](docs/specs/UC-18-native-ui.md) | CP-4 API | **DONE** (`vault-tui`); first UI, pure Rust, C20-exact |
+| S-17 | ✅ **`egui` window** — pure-Rust GUI shell | [UC-18](docs/specs/UC-18-native-ui.md) | CP-4 API | **DONE** (`vault-gui`): create/unlock, drop-a-`keys.txt` import, search, shadowed copy, edit/change/delete; `scripts/bundle-macos.sh` → `Vault.app`. Needed the 1.82→1.96 toolchain bump |
 | S-18 | **SwiftUI macOS shell via `uniffi`** — Touch ID + Secure Enclave (C5), native menus | [UC-18](docs/specs/UC-18-native-ui.md) | CP-4 API + S-8d (keychain stanza) | **post-v1**; needs the SEP-API spike + ADR |
 
 ---

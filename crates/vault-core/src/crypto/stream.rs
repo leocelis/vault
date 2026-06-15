@@ -48,6 +48,9 @@ pub fn encrypt(data_key: &[u8; 32], nonce_prefix: &[u8; 16], plaintext: &[u8]) -
     // of the chunk size, so the last-chunk marker is always present (age behavior — kills truncation
     // ambiguity).
     let mut chunks: Vec<&[u8]> = plaintext.chunks(STREAM_CHUNK_SIZE).collect();
+    // `% == 0` (not `u64::is_multiple_of`, which is newer than our 1.82 source floor — the core
+    // stays buildable on 1.82 even though the workspace toolchain is now 1.96).
+    #[allow(clippy::manual_is_multiple_of)]
     if plaintext.is_empty() || plaintext.len() % STREAM_CHUNK_SIZE == 0 {
         chunks.push(&[]);
     }

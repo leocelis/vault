@@ -79,6 +79,21 @@ vault get github                # copy password to clipboard (auto-clears in 30s
 vault ls --search git           # search after unlock (in-memory only)
 ```
 
+### Desktop app *(works today, locally)*
+
+There is a simple, fast, pure-Rust **desktop window app** (`vault-gui`) over the same core — create
+or unlock a vault, **drag a `keys.txt` onto the window** (or pick one) to import with a masked
+review, **type to search**, and **copy** a password that stays **shadowed** on screen (the secret is
+never rendered; the clipboard auto-clears). You can add, edit, change, and delete entries.
+
+```sh
+cargo run -p vault-gui          # launch the window
+./scripts/bundle-macos.sh       # macOS: build a double-clickable target/Vault.app
+```
+
+It shares one vault with the CLI/TUI at `~/.vault/vault.vlt`. (Still pre-alpha and unaudited — see
+the warning above.)
+
 Secrets are **never** passed as command-line arguments, and `vault get` delivers to the clipboard
 by default so an AI agent watching stdout can't scrape them. To be precise about the boundary:
 this defends against *incidental* capture (a secret landing in an agent's transcript); a hostile

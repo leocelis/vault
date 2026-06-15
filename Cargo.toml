@@ -7,6 +7,7 @@ members = [
     "crates/vault-core",
     "crates/vault-cli",
     "crates/vault-tui",
+    "crates/vault-gui",
     "crates/vault-sys",
     "crates/vault-hardware",
 ]
@@ -14,7 +15,9 @@ members = [
 [workspace.package]
 version = "0.0.0"
 edition = "2021"
-rust-version = "1.82"            # MSRV — keep in sync with rust-toolchain.toml (constraint C24)
+rust-version = "1.96"            # MSRV — keep in sync with rust-toolchain.toml (constraint C24).
+                                 # Bumped 1.82→1.96 for the desktop GUI stack (eframe/egui/winit/wgpu).
+                                 # The security core (vault-core/cli/tui/sys) remains 1.82-source-clean.
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/leocelis/vault"
 homepage = "https://github.com/leocelis/vault"
@@ -43,6 +46,10 @@ clap             = { version = "4", features = ["derive"] }   # C21 CLI
 rpassword        = "7"          # C29 no-echo password prompt (no secrets on argv)
 ratatui          = "0.29"       # UC-18 TUI shell (pure-Rust, alt-screen secret hygiene)
 crossterm        = "0.28"       # TUI backend
+# --- Desktop GUI (UC-18 P2 — pure-Rust windowed app, eframe/egui) ---
+eframe           = "0.29"       # egui + winit/glow windowing (native desktop window)
+egui             = "0.29"       # immediate-mode UI widgets
+rfd              = "0.15"       # native "open file" dialog for dropping in a keys.txt
 thiserror        = "2"
 # --- Dev / test ---
 proptest         = "1"          # property tests (e.g. parser round-trips)

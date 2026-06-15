@@ -82,6 +82,15 @@ All notable changes to this project are documented here. The format is based on
   helper). `vault upgrade-kdf [--kdf-m-cost/-t-cost/-p-cost]` re-wraps the password stanza under
   stronger parameters and does a full body-writing save (version bump per G0.3); the data key and
   salt are unchanged, so entries stay intact. Core gains `Vault::kdf_strength` and `Vault::change_kdf`.
+- **`vault-gui` — the desktop window app (UC-18 P2).** A pure-Rust **egui/eframe** GUI over
+  `vault-core`: a create/unlock screen, **drag-and-drop (or pick) a `keys.txt`** with a masked
+  review dialog before import, **type-to-search**, a detail pane that shows the password **shadowed**
+  with one-click **Copy** (model-blind — the secret is never rendered; clipboard auto-clears after
+  30 s, clears-iff-unchanged — C13/C27), a **Reveal** toggle, and **Add / Edit / change-password /
+  Delete** with an in-app strong-password generator. Persists through the same atomic `0600` save as
+  the CLI; secrets stay in the core; the in-memory password buffer is zeroized on drop.
+  [`scripts/bundle-macos.sh`](scripts/bundle-macos.sh) wraps the release binary in a double-clickable
+  `Vault.app`. Run with `cargo run -p vault-gui` (or `open target/Vault.app`).
 - **Project-scoped Rust toolchain** ([`scripts/setup-rust.sh`](scripts/setup-rust.sh),
   [`scripts/dev-env.sh`](scripts/dev-env.sh), [`.envrc`](.envrc)): the toolchain installs into
   `./.toolchain` (git-ignored) via rustup's `RUSTUP_HOME`/`CARGO_HOME` + `--no-modify-path` — never
@@ -89,6 +98,13 @@ All notable changes to this project are documented here. The format is based on
   `rm -rf .toolchain`. Documented in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Changed
+- **Toolchain / MSRV bumped `1.82.0` → `1.96.0`** ([rust-toolchain.toml](rust-toolchain.toml),
+  workspace `rust-version`). A deliberate, recorded bump to support the desktop GUI stack
+  (eframe/egui/winit/wgpu), whose transitive dependencies require Rust-2024-edition crates
+  (cargo ≥ 1.85). The security core (`vault-core`/`vault-cli`/`vault-tui`/`vault-sys`) remains
+  **1.82-source-clean** — newer-only APIs are avoided (e.g. an explicit `#[allow]` over a
+  `% == 0` rather than `u64::is_multiple_of`). The crypto crates stay pinned (C3); GUI deps
+  (`eframe`/`egui`/`rfd`) are dependabot-guarded against churn.
 - Intent **v1.4.0** is canonical (see the Security section). A parallel `main`-side Gate-0 pass
   (v1.3.0, C28–C31) was **reconciled into v1.4.0** during the spec-hardening merge: KDF ceiling is
   folded into `C2` (not a separate constraint), G0.3 is resolved as an `upgrade-kdf` full save (no

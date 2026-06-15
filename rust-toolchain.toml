@@ -1,6 +1,8 @@
 # Pinned toolchain — a prerequisite for reproducible builds (see docs/VERIFYING_RELEASES.md).
 # Bump deliberately and record the change in CHANGELOG.md.
 [toolchain]
-channel = "1.82.0"
+# Bumped 1.82.0 → 1.96.0 to support the desktop GUI stack (eframe/egui/winit/wgpu),
+# which requires Rust-2024-edition dependencies (cargo ≥ 1.85). Recorded in CHANGELOG.
+channel = "1.96.0"
 components = ["rustfmt", "clippy"]
 profile = "minimal"
