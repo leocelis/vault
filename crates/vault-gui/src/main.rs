@@ -131,6 +131,8 @@ struct VaultApp {
     // overlays
     editor: Option<Editor>,
     import_review: Option<ImportReview>,
+    /// A pending rollback warning (C16) shown as a modal dialog after unlock.
+    rollback_warning: Option<String>,
 
     status: String,
     error: Option<String>,
@@ -152,6 +154,7 @@ impl VaultApp {
             focus_search: false,
             editor: None,
             import_review: None,
+            rollback_warning: None,
             status: String::new(),
             error: None,
         }
@@ -174,21 +177,20 @@ impl VaultApp {
                     v.kdf_strength(),
                     vault_core::crypto::KdfStrength::BelowFloor
                 );
-                // C16 rollback check: warn (and don't advance) on a regression, else advance anchor.
-                let rollback_warn = rollback_check_and_advance(&v);
+                // C16 rollback check: surface a modal warning on a regression (anchor not advanced),
+                // otherwise advance the anchor.
+                self.rollback_warning = rollback_check_and_advance(&v);
                 self.vault = Some(v);
                 self.pw_input.zeroize();
                 self.pw_confirm.zeroize();
                 self.focus_search = true;
-                if let Some(w) = rollback_warn {
-                    self.error = Some(w);
-                    self.status = "Unlocked — see the warning above.".into();
+                self.status = if self.rollback_warning.is_some() {
+                    "Unlocked — review the rollback warning.".into()
                 } else if weak {
-                    self.status =
-                        "Unlocked — note: this vault's KDF is below the recommended floor.".into();
+                    "Unlocked — note: this vault's KDF is below the recommended floor.".into()
                 } else {
-                    self.status = "Unlocked.".into();
-                }
+                    "Unlocked.".into()
+                };
             }
             Err(e) => {
                 self.pw_input.zeroize();
@@ -245,6 +247,7 @@ impl VaultApp {
         self.query.clear();
         self.editor = None;
         self.import_review = None;
+        self.rollback_warning = None;
         self.error = None;
         self.status.clear();
         self.focus_password = true;
@@ -964,6 +967,59 @@ impl VaultApp {
             self.import_review = None;
         }
     }
+
+    /// A blocking modal shown after unlock when the local anchor indicates a rollback (C16).
+    fn rollback_modal(&mut self, ctx: &egui::Context) {
+        let Some(msg) = self.rollback_warning.clone() else {
+            return;
+        };
+        let mut open_anyway = false;
+        let mut lock = false;
+
+        // Dim the background and swallow its clicks — a lightweight modal for egui 0.29.
+        egui::Area::new(egui::Id::new("rollback_modal_bg"))
+            .fixed_pos(egui::Pos2::ZERO)
+            .order(egui::Order::Foreground)
+            .interactable(true)
+            .show(ctx, |ui| {
+                let screen = ctx.screen_rect();
+                ui.allocate_response(screen.size(), egui::Sense::click_and_drag());
+                ui.painter()
+                    .rect_filled(screen, 0.0, egui::Color32::from_black_alpha(160));
+            });
+
+        egui::Window::new("⚠  Rollback warning")
+            .order(egui::Order::Foreground)
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.set_max_width(460.0);
+                ui.label(&msg);
+                ui.add_space(8.0);
+                ui.label(
+                    "Your storage backend may have served an older copy of the vault — or you may \
+                     have restored an older backup yourself. Verify before relying on it.",
+                );
+                ui.add_space(12.0);
+                ui.horizontal(|ui| {
+                    if ui.button("Open anyway").clicked() {
+                        open_anyway = true;
+                    }
+                    if ui.button("Lock").clicked() {
+                        lock = true;
+                    }
+                });
+            });
+
+        if open_anyway {
+            self.rollback_warning = None;
+            self.status = "Proceeding despite the rollback warning.".into();
+        }
+        if lock {
+            self.lock();
+        }
+    }
 }
 
 impl eframe::App for VaultApp {
@@ -973,6 +1029,7 @@ impl eframe::App for VaultApp {
             self.unlocked_screen(ctx);
             self.editor_window(ctx);
             self.import_window(ctx);
+            self.rollback_modal(ctx);
         } else {
             self.locked_screen(ctx);
         }
