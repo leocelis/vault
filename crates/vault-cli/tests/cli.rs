@@ -148,6 +148,22 @@ fn unique_dir(tag: &str) -> PathBuf {
     p
 }
 
+/// C22: `vault tune` benchmarks Argon2id and prints a recommended m/t/p with the measured time.
+#[test]
+fn cli_tune_recommends_params() {
+    let (ok, out, err) = run(&["tune"], "");
+    assert!(ok, "tune failed: {err}");
+    let combined = format!("{out}{err}");
+    assert!(
+        combined.contains("ms"),
+        "tune output must report milliseconds: {combined}"
+    );
+    assert!(
+        combined.contains("m=") && combined.contains("t=") && combined.contains("p="),
+        "tune output must list m/t/p: {combined}"
+    );
+}
+
 /// UC-07 §3.2: `vault pad on` enables Padmé size-padding and the vault still opens.
 #[test]
 fn cli_padding_toggle() {

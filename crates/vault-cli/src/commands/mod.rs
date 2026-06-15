@@ -72,7 +72,8 @@ pub fn dispatch(vault_opt: Option<PathBuf>, opts: &OpenOpts, command: Command) -
             opts,
         ),
         Command::Pad { state } => cmd_pad(&vault_path(vault_opt)?, &state, opts),
-        Command::Lock | Command::Tune => Err("that command is not implemented yet".to_string()),
+        Command::Tune => cmd_tune(),
+        Command::Lock => Err("that command is not implemented yet".to_string()),
     }
 }
 
@@ -357,6 +358,22 @@ fn cmd_upgrade_kdf(path: &Path, m: u32, t: u32, p: u32, opts: &OpenOpts) -> CmdR
     Ok(())
 }
 
+fn cmd_tune() -> CmdResult {
+    eprintln!("Benchmarking Argon2id on this machine (targeting ~300 ms)…");
+    let r = vault_core::crypto::tune::recommend().map_err(|e| e.to_string())?;
+    let mib = r.m_cost_kib / 1024;
+    // The recommendation goes to stdout (scriptable); the measured time + apply hint to stderr.
+    println!(
+        "Recommended Argon2id: m={} KiB ({mib} MiB), t={}, p={} — measured {} ms",
+        r.m_cost_kib, r.t_cost, r.p_cost, r.measured_ms
+    );
+    eprintln!(
+        "Apply with: vault upgrade-kdf --kdf-m-cost {} --kdf-t-cost {} --kdf-p-cost {}",
+        r.m_cost_kib, r.t_cost, r.p_cost
+    );
+    Ok(())
+}
+
 fn cmd_pad(path: &Path, state: &str, opts: &OpenOpts) -> CmdResult {
     use vault_core::pad::PadMode;
     let mode = match state.to_lowercase().as_str() {
@@ -449,6 +466,8 @@ fn read_vault(path: &Path) -> Result<Vec<u8>, String> {
 /// run the rollback guard (constraint C16 — may `exit(2)` if the user won't accept a regression).
 fn open_vault(path: &Path, password: &[u8], opts: &OpenOpts) -> Result<Vault, String> {
     let bytes = read_vault(path)?;
+    // Progress indicator for the Argon2id unlock so the user doesn't think it hung (constraint C22).
+    eprintln!("Deriving key (Argon2id)…");
     let vault = Vault::open(&bytes, password).map_err(|e| e.to_string())?;
     if matches!(
         vault.kdf_strength(),

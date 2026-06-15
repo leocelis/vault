@@ -128,6 +128,13 @@ All notable changes to this project are documented here. The format is based on
   (persisted in the inner header, default off) and toggled with **`vault pad on|off`** or the desktop
   app's **"Pad size"** checkbox; `Vault::padding()`/`set_padding()` added. 6 new tests (Padmé bucket
   math + bound, sticky round-trip, CLI toggle).
+- **`vault tune` (C22).** New [`crypto::tune`](crates/vault-core/src/crypto/tune.rs): benchmarks
+  Argon2id on the current machine and recommends `m`/`t`/`p` targeting the ~300 ms interactive-unlock
+  budget — it probes at a baseline memory cost, linear-extrapolates `m` (Argon2 time is ~linear in
+  `m`), clamps into the policy floor/ceiling, and re-measures so the reported time is real. Prints the
+  recommendation to stdout (scriptable) with an `upgrade-kdf` apply hint. Unlocking commands now also
+  print a `Deriving key (Argon2id)…` progress line so a slow unlock doesn't look hung (C22). 2 new
+  tests.
 - **Project-scoped Rust toolchain** ([`scripts/setup-rust.sh`](scripts/setup-rust.sh),
   [`scripts/dev-env.sh`](scripts/dev-env.sh), [`.envrc`](.envrc)): the toolchain installs into
   `./.toolchain` (git-ignored) via rustup's `RUSTUP_HOME`/`CARGO_HOME` + `--no-modify-path` — never

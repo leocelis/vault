@@ -11,6 +11,7 @@ use sha2::Sha256;
 
 pub mod kdf;
 pub mod stream;
+pub mod tune; // C22  Argon2id benchmark + recommendation
 
 /// HKDF-SHA-256 to a 32-byte key. Shared by the envelope (C5) and the integrity layers (C9/C10).
 ///
