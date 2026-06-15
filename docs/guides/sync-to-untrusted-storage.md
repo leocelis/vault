@@ -35,7 +35,7 @@ The desktop app does the same: open it, drag `keys.txt` onto the window, then se
 | You're **not** protected from… | What to do |
 |---|---|
 | The backend **deleting / corrupting-to-garbage** the file (availability) | Keep your own copy. Vault guarantees confidentiality + tamper-*evidence*, not that a vandal can't destroy the file. |
-| The backend learning **metadata**: file size (≈ how many entries), how often you save, timestamps | Inherent to a single blob; size-padding (Padmé) is a planned v2 option (UC-07 §3.2). |
+| The backend learning **metadata**: file size (≈ how many entries), how often you save, timestamps | Turn on **size-padding** — `vault pad on` (or the desktop app's **"Pad size"** toggle) — to bucket the file size with Padmé (`≤ ~12 %` overhead), so the size leaks only `O(log log L)` bits (UC-07 §3.2). Save frequency / timestamps still leak. |
 | **Forgetting your master password** | There is no recovery. The whole design assumes the blob will be stolen, so there is no backdoor. |
 
 ## Rollback detection in practice (C16)

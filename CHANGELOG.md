@@ -120,6 +120,14 @@ All notable changes to this project are documented here. The format is based on
   [docs/guides/sync-to-untrusted-storage.md](docs/guides/sync-to-untrusted-storage.md). 6 new tests
   (core anchor unit tests + a CLI integration test covering regression→exit 2, `--allow-rollback`,
   TOFU, and `--expect-min-version`). `Vault::vault_id()` added.
+- **Optional Padmé size-padding (UC-07 §3.2).** New [`pad`](crates/vault-core/src/pad.rs): a single
+  encrypted blob still leaks its *length* (≈ entry count) to a backend; turning padding on rounds the
+  plaintext payload up to a **Padmé** bucket (`⌊log₂log₂L⌋+1` significant length bits → `O(log log L)`
+  leakage at `≤ ~12 %` overhead). Padding is appended **inside** the AEAD (after the `END` marker the
+  parser already ignores), so it's encrypted, authenticated, and invisible. The policy is **sticky**
+  (persisted in the inner header, default off) and toggled with **`vault pad on|off`** or the desktop
+  app's **"Pad size"** checkbox; `Vault::padding()`/`set_padding()` added. 6 new tests (Padmé bucket
+  math + bound, sticky round-trip, CLI toggle).
 - **Project-scoped Rust toolchain** ([`scripts/setup-rust.sh`](scripts/setup-rust.sh),
   [`scripts/dev-env.sh`](scripts/dev-env.sh), [`.envrc`](.envrc)): the toolchain installs into
   `./.toolchain` (git-ignored) via rustup's `RUSTUP_HOME`/`CARGO_HOME` + `--no-modify-path` — never

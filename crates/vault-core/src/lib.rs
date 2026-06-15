@@ -29,6 +29,7 @@ pub mod format; // C7–C10  on-disk format + integrity
 pub mod gen; // C26     CSPRNG password generation
 pub mod import; // UC-17   lenient keys.txt parser
 pub mod memory; // C11–C13, C25  secret types, mlock, constant-time
+pub mod pad; // UC-07 §3.2  optional Padmé payload padding
 pub mod rollback; // C16     monotonic counter + local anchor
 mod vault; // open/save orchestration (the v0 vault-core API)
 

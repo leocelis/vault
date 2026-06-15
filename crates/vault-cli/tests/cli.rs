@@ -148,6 +148,59 @@ fn unique_dir(tag: &str) -> PathBuf {
     p
 }
 
+/// UC-07 §3.2: `vault pad on` enables Padmé size-padding and the vault still opens.
+#[test]
+fn cli_padding_toggle() {
+    let home = unique_dir("pad-home");
+    let vault = unique_vault();
+    let vs = vault.to_str().unwrap();
+    let pw = "pad-pass\n";
+    let fast = [
+        "--kdf-m-cost",
+        "8192",
+        "--kdf-t-cost",
+        "1",
+        "--kdf-p-cost",
+        "1",
+    ];
+
+    let mut init_args = vec!["--vault", vs, "init"];
+    init_args.extend_from_slice(&fast);
+    assert_eq!(run_env(&home, &init_args, pw).0, Some(0), "init");
+
+    let sample = sample_path();
+    let sp = sample.to_str().unwrap();
+    assert_eq!(
+        run_env(&home, &["--vault", vs, "import", "--format", "raw", sp], pw).0,
+        Some(0),
+        "import"
+    );
+    let before = std::fs::metadata(&vault).unwrap().len();
+
+    let (code, _, err) = run_env(&home, &["--vault", vs, "pad", "on"], pw);
+    assert_eq!(code, Some(0), "pad on: {err}");
+    assert!(err.to_lowercase().contains("padding"), "stderr: {err}");
+    let after = std::fs::metadata(&vault).unwrap().len();
+    assert!(
+        after >= before,
+        "padded file should not shrink ({after} < {before})"
+    );
+
+    // The vault still opens (and lists) with padding enabled.
+    let (code, out, _) = run_env(&home, &["--vault", vs, "ls"], pw);
+    assert_eq!(code, Some(0));
+    assert!(out.contains("github"), "ls after padding: {out}");
+
+    assert_eq!(
+        run_env(&home, &["--vault", vs, "pad", "off"], pw).0,
+        Some(0),
+        "pad off"
+    );
+
+    let _ = std::fs::remove_file(&vault);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
 /// C16 / UC-07: a sync backend serving an older copy is detected against the local anchor.
 #[test]
 fn cli_rollback_detection() {

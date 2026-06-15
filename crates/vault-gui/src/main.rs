@@ -108,6 +108,7 @@ enum Action {
     CopyPassword(usize),
     CopyUsername(usize),
     Edit(usize),
+    SetPadding(bool),
 }
 
 struct VaultApp {
@@ -583,6 +584,10 @@ impl VaultApp {
                 .collect();
             (items, vault.entries().len())
         };
+        let mut pad_on = matches!(
+            self.vault.as_ref().expect("unlocked").padding(),
+            vault_core::pad::PadMode::Padme
+        );
 
         // Top bar: search + actions + status.
         egui::TopBottomPanel::top("top").show(ctx, |ui| {
@@ -592,6 +597,16 @@ impl VaultApp {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button("Lock").clicked() {
                         action = Some(Action::Lock);
+                    }
+                    if ui
+                        .checkbox(&mut pad_on, "Pad size")
+                        .on_hover_text(
+                            "Hide the file's exact size (Padmé padding) — better privacy on \
+                             untrusted storage, ≤ ~12% larger.",
+                        )
+                        .changed()
+                    {
+                        action = Some(Action::SetPadding(pad_on));
                     }
                     if ui.button("Import keys.txt").clicked() {
                         action = Some(Action::ChooseImport);
@@ -754,7 +769,29 @@ impl VaultApp {
                 Action::CopyPassword(i) => self.copy_password(i),
                 Action::CopyUsername(i) => self.copy_username(i),
                 Action::Edit(i) => self.begin_edit(i),
+                Action::SetPadding(on) => self.set_padding(on),
             }
+        }
+    }
+
+    /// Toggle Padmé payload size-padding (UC-07 §3.2) and persist (re-saves the vault).
+    fn set_padding(&mut self, on: bool) {
+        if let Some(v) = self.vault.as_mut() {
+            v.set_padding(if on {
+                vault_core::pad::PadMode::Padme
+            } else {
+                vault_core::pad::PadMode::None
+            });
+        }
+        match self.persist() {
+            Ok(()) => {
+                self.status = if on {
+                    "Size-padding on — the file's exact size is now hidden.".into()
+                } else {
+                    "Size-padding off.".into()
+                }
+            }
+            Err(e) => self.error = Some(e),
         }
     }
 

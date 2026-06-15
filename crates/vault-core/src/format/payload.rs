@@ -20,6 +20,7 @@ use super::cursor::Cursor;
 use super::entry::{Entry, Protected};
 use super::inner_stream::{InnerStream, SealKey};
 use super::tlv::{self, MAX_ENTRY_LEN};
+use crate::pad::PadMode;
 use crate::{Error, Result};
 
 /// The only inner-stream algorithm in v1: ChaCha20 (constraint C19).
@@ -30,6 +31,7 @@ pub const INNER_STREAM_KEY_LEN: usize = 64;
 mod tag {
     pub const INNER_ALGO: u16 = 0x0001;
     pub const INNER_KEY: u16 = 0x0002;
+    pub const PAD_MODE: u16 = 0x0003; // UC-07 §3.2 padding policy (u8); absent = none
     pub const VAULT_VERSION: u16 = 0x0010;
     pub const ENTRY: u16 = 0x0020;
     pub const END: u16 = 0x0000;
@@ -40,6 +42,8 @@ mod tag {
 pub struct Payload {
     /// 64-byte inner-stream key, regenerated on every save (constraint C19). Secret.
     pub inner_stream_key: Protected,
+    /// Payload size-padding policy (UC-07 §3.2). Persisted inside the AEAD; default `None`.
+    pub pad_mode: PadMode,
     /// Monotonic version counter (constraint C16).
     pub vault_version: u64,
     /// The entries.
@@ -56,6 +60,7 @@ impl Payload {
         let mut out = Vec::new();
         tlv::write_record(&mut out, tag::INNER_ALGO, &[INNER_STREAM_CHACHA20]);
         tlv::write_record(&mut out, tag::INNER_KEY, &self.inner_stream_key.expose());
+        tlv::write_record(&mut out, tag::PAD_MODE, &[self.pad_mode.to_byte()]);
         tlv::write_record(
             &mut out,
             tag::VAULT_VERSION,
@@ -77,6 +82,7 @@ impl Payload {
     pub fn parse(bytes: &[u8]) -> Result<Payload> {
         let mut cur = Cursor::new(bytes);
         let mut inner_key: Option<Protected> = None;
+        let mut pad_mode = PadMode::None;
         let mut version: Option<u64> = None;
         let mut entry_blobs: Vec<&[u8]> = Vec::new();
 
@@ -93,6 +99,11 @@ impl Payload {
                         return Err(Error::BodyMalformed);
                     }
                     inner_key = Some(Protected::new(v.to_vec()));
+                }
+                tag::PAD_MODE => {
+                    if let Some(&b) = v.first() {
+                        pad_mode = PadMode::from_byte(b);
+                    }
                 }
                 tag::VAULT_VERSION => version = Some(tlv::decode_u64(v)?),
                 tag::ENTRY => entry_blobs.push(v),
@@ -112,6 +123,7 @@ impl Payload {
 
         Ok(Payload {
             inner_stream_key: inner_key,
+            pad_mode,
             vault_version: version.ok_or(Error::BodyMalformed)?,
             entries,
         })
@@ -146,6 +158,7 @@ mod tests {
     fn sample() -> Payload {
         Payload {
             inner_stream_key: Protected::new(vec![0x5A; INNER_STREAM_KEY_LEN]),
+            pad_mode: PadMode::None,
             vault_version: 3,
             entries: vec![entry(1, "a", b"pw-a"), entry(2, "b", b"pw-b")],
         }
@@ -165,6 +178,7 @@ mod tests {
         let secret = b"UNIQUE-passw0rd-DEADBEEF-not-in-bytes";
         let p = Payload {
             inner_stream_key: Protected::new(vec![0x5A; INNER_STREAM_KEY_LEN]),
+            pad_mode: PadMode::None,
             vault_version: 1,
             entries: vec![entry(1, "svc", secret)],
         };
@@ -181,6 +195,7 @@ mod tests {
     fn round_trip_empty_entries() {
         let p = Payload {
             inner_stream_key: Protected::new(vec![1; INNER_STREAM_KEY_LEN]),
+            pad_mode: PadMode::None,
             vault_version: 0,
             entries: vec![],
         };

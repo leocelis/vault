@@ -104,6 +104,11 @@ enum Command {
     },
     /// Benchmark and recommend Argon2id parameters (constraint C22). *(not yet implemented)*
     Tune,
+    /// Toggle payload size-padding so the file's exact size is hidden (UC-07 §3.2). `vault pad on|off`.
+    Pad {
+        /// `on` to enable Padmé size-padding, `off` to disable it.
+        state: String,
+    },
     /// Internal: detached clipboard auto-clear helper. Reads the secret on stdin; not for direct
     /// use (constraint C13 / UC-04).
     #[command(hide = true)]

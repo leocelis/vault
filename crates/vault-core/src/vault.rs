@@ -84,6 +84,7 @@ impl Vault {
         };
         let payload = Payload {
             inner_stream_key: Protected::new(inner.to_vec()),
+            pad_mode: crate::pad::PadMode::None,
             vault_version: 0,
             entries: Vec::new(),
         };
@@ -161,7 +162,12 @@ impl Vault {
         inner.zeroize();
         self.payload.vault_version += 1;
 
-        let plaintext = Zeroizing::new(self.payload.serialize());
+        // Serialize, then (UC-07 §3.2) pad the plaintext to its size bucket *inside* the AEAD: the
+        // padding bytes follow the END marker (which the parser ignores) and are encrypted +
+        // authenticated, so the on-disk size leaks only O(log log L) bits.
+        let mut plaintext = Zeroizing::new(self.payload.serialize());
+        let target = self.payload.pad_mode.padded_len(plaintext.len());
+        plaintext.resize(target, 0u8);
         // Lock the serialized plaintext's pages off swap while it exists (C12).
         let _payload_lock = crate::memory::PageLock::new(&plaintext);
         let stream_ct = stream::encrypt(
@@ -190,6 +196,17 @@ impl Vault {
     /// rollback anchor (C16) without exposing any other header field.
     pub fn vault_id(&self) -> &[u8; 16] {
         &self.header.vault_id
+    }
+
+    /// The payload size-padding policy (UC-07 §3.2).
+    pub fn padding(&self) -> crate::pad::PadMode {
+        self.payload.pad_mode
+    }
+
+    /// Set the payload size-padding policy; it takes effect on the next [`Vault::save`] and is
+    /// persisted inside the encrypted payload (UC-07 §3.2).
+    pub fn set_padding(&mut self, mode: crate::pad::PadMode) {
+        self.payload.pad_mode = mode;
     }
 
     /// All entries (after unlock).
@@ -421,5 +438,32 @@ mod tests {
         assert_eq!(&opened.get("svc").unwrap().password.expose()[..], b"new");
         assert!(opened.remove("svc"));
         assert!(opened.get("svc").is_none());
+    }
+
+    #[test]
+    fn padding_is_sticky_and_round_trips() {
+        use crate::pad::PadMode;
+        let mut v = Vault::create(b"pw", M, T, P).unwrap();
+        for i in 0..5 {
+            v.add_entry(entry(&format!("svc{i}"), b"secret-value-xyz-1234567890"));
+        }
+        assert_eq!(v.padding(), PadMode::None);
+        let unpadded = v.save().unwrap();
+
+        v.set_padding(PadMode::Padme);
+        let padded = v.save().unwrap();
+        assert!(
+            padded.len() >= unpadded.len(),
+            "padding must not shrink the file"
+        );
+
+        // The padding policy is persisted inside the AEAD and entries survive the round-trip.
+        let opened = Vault::open(&padded, b"pw").unwrap();
+        assert_eq!(opened.padding(), PadMode::Padme);
+        assert_eq!(opened.entries().len(), 5);
+        assert_eq!(
+            &opened.get("svc0").unwrap().password.expose()[..],
+            b"secret-value-xyz-1234567890"
+        );
     }
 }

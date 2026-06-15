@@ -71,6 +71,7 @@ pub fn dispatch(vault_opt: Option<PathBuf>, opts: &OpenOpts, command: Command) -
             kdf_p_cost,
             opts,
         ),
+        Command::Pad { state } => cmd_pad(&vault_path(vault_opt)?, &state, opts),
         Command::Lock | Command::Tune => Err("that command is not implemented yet".to_string()),
     }
 }
@@ -353,6 +354,30 @@ fn cmd_upgrade_kdf(path: &Path, m: u32, t: u32, p: u32, opts: &OpenOpts) -> CmdR
     write_vault(path, &out)?;
     note_saved(&vault);
     eprintln!("Upgraded KDF parameters.");
+    Ok(())
+}
+
+fn cmd_pad(path: &Path, state: &str, opts: &OpenOpts) -> CmdResult {
+    use vault_core::pad::PadMode;
+    let mode = match state.to_lowercase().as_str() {
+        "on" | "padme" | "true" => PadMode::Padme,
+        "off" | "none" | "false" => PadMode::None,
+        other => return Err(format!("unknown pad state {other:?} (use `on` or `off`)")),
+    };
+    let password = prompt_password(false)?;
+    let mut vault = open_vault(path, password.as_bytes(), opts)?;
+    vault.set_padding(mode);
+    let out = vault.save().map_err(|e| e.to_string())?;
+    write_vault(path, &out)?;
+    note_saved(&vault);
+    eprintln!(
+        "Size-padding {}.",
+        if matches!(mode, PadMode::Padme) {
+            "enabled (Padmé) — the file's exact size is now hidden"
+        } else {
+            "disabled"
+        }
+    );
     Ok(())
 }
 
