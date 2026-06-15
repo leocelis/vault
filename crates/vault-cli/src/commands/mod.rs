@@ -18,36 +18,59 @@ use crate::Command;
 
 type CmdResult = Result<(), String>;
 
+/// Options that affect how a vault is opened — the rollback policy (constraint C16).
+pub struct OpenOpts {
+    /// Proceed past a regression without prompting (the anchor is never lowered).
+    pub allow_rollback: bool,
+    /// On a fresh machine (no anchor), require at least this version (TOFU mitigation).
+    pub expect_min_version: Option<u64>,
+}
+
 /// Route a parsed command to its handler.
-pub fn dispatch(vault_opt: Option<PathBuf>, command: Command) -> CmdResult {
+pub fn dispatch(vault_opt: Option<PathBuf>, opts: &OpenOpts, command: Command) -> CmdResult {
     match command {
         Command::Init {
             kdf_m_cost,
             kdf_t_cost,
             kdf_p_cost,
         } => cmd_init(&vault_path(vault_opt)?, kdf_m_cost, kdf_t_cost, kdf_p_cost),
-        Command::Import { format, source } => cmd_import(&vault_path(vault_opt)?, &format, &source),
-        Command::Ls { search } => cmd_ls(&vault_path(vault_opt)?, search.as_deref()),
+        Command::Import { format, source } => {
+            cmd_import(&vault_path(vault_opt)?, &format, &source, opts)
+        }
+        Command::Ls { search } => cmd_ls(&vault_path(vault_opt)?, search.as_deref(), opts),
         Command::Get {
             name,
             field,
             stdout,
             timeout,
-        } => cmd_get(&vault_path(vault_opt)?, &name, &field, stdout, timeout),
+        } => cmd_get(
+            &vault_path(vault_opt)?,
+            &name,
+            &field,
+            stdout,
+            timeout,
+            opts,
+        ),
         Command::HoldClipboard { secs } => run_clipboard_holder(secs),
         Command::Gen {
             length,
             charset,
             words,
         } => cmd_gen(length, &charset, words),
-        Command::Add { name } => cmd_add(&vault_path(vault_opt)?, &name),
-        Command::Edit { name } => cmd_edit(&vault_path(vault_opt)?, &name),
-        Command::Rm { name } => cmd_rm(&vault_path(vault_opt)?, &name),
+        Command::Add { name } => cmd_add(&vault_path(vault_opt)?, &name, opts),
+        Command::Edit { name } => cmd_edit(&vault_path(vault_opt)?, &name, opts),
+        Command::Rm { name } => cmd_rm(&vault_path(vault_opt)?, &name, opts),
         Command::UpgradeKdf {
             kdf_m_cost,
             kdf_t_cost,
             kdf_p_cost,
-        } => cmd_upgrade_kdf(&vault_path(vault_opt)?, kdf_m_cost, kdf_t_cost, kdf_p_cost),
+        } => cmd_upgrade_kdf(
+            &vault_path(vault_opt)?,
+            kdf_m_cost,
+            kdf_t_cost,
+            kdf_p_cost,
+            opts,
+        ),
         Command::Lock | Command::Tune => Err("that command is not implemented yet".to_string()),
     }
 }
@@ -67,11 +90,12 @@ fn cmd_init(path: &Path, m_cost: u32, t_cost: u32, p_cost: u32) -> CmdResult {
         Vault::create(password.as_bytes(), m_cost, t_cost, p_cost).map_err(|e| e.to_string())?;
     let bytes = vault.save().map_err(|e| e.to_string())?;
     write_vault(path, &bytes)?;
+    note_saved(&vault); // C16: seed the local anchor at the initial version
     eprintln!("Created vault at {}", path.display());
     Ok(())
 }
 
-fn cmd_import(path: &Path, format: &str, source: &Path) -> CmdResult {
+fn cmd_import(path: &Path, format: &str, source: &Path, opts: &OpenOpts) -> CmdResult {
     if format != "raw" {
         return Err(format!(
             "unknown import format {format:?} (only `raw` is supported)"
@@ -111,20 +135,21 @@ fn cmd_import(path: &Path, format: &str, source: &Path) -> CmdResult {
     }
 
     let password = prompt_password(false)?;
-    let mut vault = open_vault(path, password.as_bytes())?;
+    let mut vault = open_vault(path, password.as_bytes(), opts)?;
     let n = result.entries.len();
     for entry in result.entries {
         vault.add_entry(entry);
     }
     let out = vault.save().map_err(|e| e.to_string())?;
     write_vault(path, &out)?;
+    note_saved(&vault);
     eprintln!("Imported {n} entries into {}.", path.display());
     Ok(())
 }
 
-fn cmd_ls(path: &Path, search: Option<&str>) -> CmdResult {
+fn cmd_ls(path: &Path, search: Option<&str>, opts: &OpenOpts) -> CmdResult {
     let password = prompt_password(false)?;
-    let vault = open_vault(path, password.as_bytes())?;
+    let vault = open_vault(path, password.as_bytes(), opts)?;
     let entries = match search {
         Some(q) => vault.search(q),
         None => vault.entries().iter().collect(),
@@ -140,12 +165,19 @@ fn cmd_ls(path: &Path, search: Option<&str>) -> CmdResult {
     Ok(())
 }
 
-fn cmd_get(path: &Path, name: &str, field: &str, stdout: bool, timeout: u64) -> CmdResult {
+fn cmd_get(
+    path: &Path,
+    name: &str,
+    field: &str,
+    stdout: bool,
+    timeout: u64,
+    opts: &OpenOpts,
+) -> CmdResult {
     if field != "password" {
         return Err("only the `password` field is supported in this version".to_string());
     }
     let password = prompt_password(false)?;
-    let vault = open_vault(path, password.as_bytes())?;
+    let vault = open_vault(path, password.as_bytes(), opts)?;
     let entry = vault
         .get(name)
         .ok_or_else(|| format!("no entry titled {name:?}"))?;
@@ -205,9 +237,9 @@ fn cmd_gen(length: usize, charset: &str, words: Option<usize>) -> CmdResult {
     Ok(())
 }
 
-fn cmd_add(path: &Path, name: &str) -> CmdResult {
+fn cmd_add(path: &Path, name: &str, opts: &OpenOpts) -> CmdResult {
     let password = prompt_password(false)?;
-    let mut vault = open_vault(path, password.as_bytes())?;
+    let mut vault = open_vault(path, password.as_bytes(), opts)?;
     if vault.get(name).is_some() {
         return Err(format!(
             "an entry titled {name:?} already exists; use `edit`"
@@ -242,6 +274,7 @@ fn cmd_add(path: &Path, name: &str) -> CmdResult {
     });
     let out = vault.save().map_err(|e| e.to_string())?;
     write_vault(path, &out)?;
+    note_saved(&vault);
     if generated {
         eprintln!(
             "Added {name:?} with a generated 20-char password — `vault get {name}` to copy it."
@@ -252,9 +285,9 @@ fn cmd_add(path: &Path, name: &str) -> CmdResult {
     Ok(())
 }
 
-fn cmd_edit(path: &Path, name: &str) -> CmdResult {
+fn cmd_edit(path: &Path, name: &str, opts: &OpenOpts) -> CmdResult {
     let password = prompt_password(false)?;
-    let mut vault = open_vault(path, password.as_bytes())?;
+    let mut vault = open_vault(path, password.as_bytes(), opts)?;
     let (cur_user, cur_url, cur_notes) = {
         let e = vault
             .get(name)
@@ -285,13 +318,14 @@ fn cmd_edit(path: &Path, name: &str) -> CmdResult {
     e.modified_at = now_unix();
     let out = vault.save().map_err(|e| e.to_string())?;
     write_vault(path, &out)?;
+    note_saved(&vault);
     eprintln!("Updated {name:?}.");
     Ok(())
 }
 
-fn cmd_rm(path: &Path, name: &str) -> CmdResult {
+fn cmd_rm(path: &Path, name: &str, opts: &OpenOpts) -> CmdResult {
     let password = prompt_password(false)?;
-    let mut vault = open_vault(path, password.as_bytes())?;
+    let mut vault = open_vault(path, password.as_bytes(), opts)?;
     if vault.get(name).is_none() {
         return Err(format!("no entry titled {name:?}"));
     }
@@ -303,19 +337,21 @@ fn cmd_rm(path: &Path, name: &str) -> CmdResult {
     vault.remove(name);
     let out = vault.save().map_err(|e| e.to_string())?;
     write_vault(path, &out)?;
+    note_saved(&vault);
     eprintln!("Deleted {name:?}.");
     Ok(())
 }
 
-fn cmd_upgrade_kdf(path: &Path, m: u32, t: u32, p: u32) -> CmdResult {
+fn cmd_upgrade_kdf(path: &Path, m: u32, t: u32, p: u32, opts: &OpenOpts) -> CmdResult {
     let password = prompt_password(false)?;
-    let mut vault = open_vault(path, password.as_bytes())?;
+    let mut vault = open_vault(path, password.as_bytes(), opts)?;
     eprintln!("Re-deriving with Argon2id (m={m} KiB, t={t}, p={p})…");
     vault
         .change_kdf(password.as_bytes(), m, t, p)
         .map_err(|e| e.to_string())?;
     let out = vault.save().map_err(|e| e.to_string())?;
     write_vault(path, &out)?;
+    note_saved(&vault);
     eprintln!("Upgraded KDF parameters.");
     Ok(())
 }
@@ -384,8 +420,9 @@ fn read_vault(path: &Path) -> Result<Vec<u8>, String> {
         .map_err(|_| format!("no vault at {} — run `vault init` first", path.display()))
 }
 
-/// Read + unlock the vault, warning if its KDF is below the recommended floor (constraint C2).
-fn open_vault(path: &Path, password: &[u8]) -> Result<Vault, String> {
+/// Read + unlock the vault, warning if its KDF is below the recommended floor (constraint C2), then
+/// run the rollback guard (constraint C16 — may `exit(2)` if the user won't accept a regression).
+fn open_vault(path: &Path, password: &[u8], opts: &OpenOpts) -> Result<Vault, String> {
     let bytes = read_vault(path)?;
     let vault = Vault::open(&bytes, password).map_err(|e| e.to_string())?;
     if matches!(
@@ -397,7 +434,53 @@ fn open_vault(path: &Path, password: &[u8]) -> Result<Vault, String> {
              run `vault upgrade-kdf` to strengthen it."
         );
     }
+    rollback_guard(&vault, opts);
     Ok(vault)
+}
+
+/// Compare the opened vault's version against the local anchor (C16). On a regression: warn, then
+/// prompt (TTY) or exit 2 (non-TTY) unless `--allow-rollback`. On success: advance the anchor.
+fn rollback_guard(vault: &Vault, opts: &OpenOpts) {
+    use vault_core::rollback::{self, RollbackCheck};
+    let Ok(anchor) = rollback::anchor_path(vault.vault_id()) else {
+        return; // cannot locate a data dir → skip the alarm wire (best-effort)
+    };
+    let last_seen = rollback::read_anchor(&anchor);
+    let floor = opts.expect_min_version.unwrap_or(0).max(last_seen);
+    match rollback::check(vault.version(), floor) {
+        RollbackCheck::Ok => {
+            let _ = rollback::advance_anchor(&anchor, vault.version());
+        }
+        RollbackCheck::Regressed { expected, got } => {
+            eprintln!(
+                "WARNING: vault version regressed (expected >= {expected}, got {got}). \
+                 The sync backend may have served an older copy."
+            );
+            if opts.allow_rollback {
+                eprintln!("Proceeding (--allow-rollback); the local anchor is left unchanged.");
+                return;
+            }
+            if std::io::stdin().is_terminal() {
+                eprint!("Proceed anyway? [y/N] ");
+                std::io::stderr().flush().ok();
+                let mut s = String::new();
+                let _ = std::io::stdin().read_line(&mut s);
+                if matches!(s.trim().to_lowercase().as_str(), "y" | "yes") {
+                    return; // proceed; do not lower the anchor
+                }
+            }
+            // Non-TTY, or a TTY that answered no: abort with the reserved rollback exit code (C16).
+            std::process::exit(2);
+        }
+    }
+}
+
+/// After a save, advance the local anchor to the new version so a later open can detect a backend
+/// serving the pre-save copy (constraint C16 / UC-07 §3.4). Best-effort.
+fn note_saved(vault: &Vault) {
+    if let Ok(anchor) = vault_core::rollback::anchor_path(vault.vault_id()) {
+        let _ = vault_core::rollback::advance_anchor(&anchor, vault.version());
+    }
 }
 
 /// Atomic write: temp file (0600 on Unix) in the same dir → fsync → rename over the target.

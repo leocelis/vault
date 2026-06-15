@@ -106,6 +106,20 @@ All notable changes to this project are documented here. The format is based on
   loaded field's bytes are ciphertext until the accessor runs) and seek-equals-sequential-stream.
   Adds the audited `chacha20` crate (C3). The session still holds the key, so this does not defend
   against a full key-inclusive memory dump (KDBX 4 has the same property — see the C19 rationale).
+- **Rollback detection — the untrusted-storage use case is now complete (C16 / UC-07).** A vault you
+  park on Google Drive, a droplet, or git is already unreadable and tamper-evident (C1/C5/C9/C10/C18);
+  this adds the last guarantee — a backend that serves an **older** copy is caught. New
+  [`rollback`](crates/vault-core/src/rollback/mod.rs): an 8-byte little-endian **local anchor** kept
+  *outside* the synced folder (`$XDG_DATA_HOME`/`~/Library/Application Support`/`%LOCALAPPDATA%` →
+  `vault/<vault_id>.state`), advanced monotonically (`max`) under an advisory **flock** (new
+  `vault-sys::flock_exclusive`) via atomic temp+rename. The CLI checks it on every open and advances
+  it on every save: a regression **warns + prompts** on a TTY (default abort) and **exits 2** with no
+  prompt non-interactively; `--allow-rollback` proceeds (anchor not lowered) and `--expect-min-version
+  N` pins a floor for a freshly provisioned machine (trust-on-first-use mitigation). The desktop GUI
+  shows a rollback warning banner and advances the anchor on open/save. New end-to-end guide
+  [docs/guides/sync-to-untrusted-storage.md](docs/guides/sync-to-untrusted-storage.md). 6 new tests
+  (core anchor unit tests + a CLI integration test covering regression→exit 2, `--allow-rollback`,
+  TOFU, and `--expect-min-version`). `Vault::vault_id()` added.
 - **Project-scoped Rust toolchain** ([`scripts/setup-rust.sh`](scripts/setup-rust.sh),
   [`scripts/dev-env.sh`](scripts/dev-env.sh), [`.envrc`](.envrc)): the toolchain installs into
   `./.toolchain` (git-ignored) via rustup's `RUSTUP_HOME`/`CARGO_HOME` + `--no-modify-path` — never

@@ -186,6 +186,12 @@ impl Vault {
         self.payload.vault_version
     }
 
+    /// The 16-byte random vault id (stable for the life of the vault) — used to locate the local
+    /// rollback anchor (C16) without exposing any other header field.
+    pub fn vault_id(&self) -> &[u8; 16] {
+        &self.header.vault_id
+    }
+
     /// All entries (after unlock).
     pub fn entries(&self) -> &[Entry] {
         &self.payload.entries

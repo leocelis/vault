@@ -23,6 +23,13 @@ struct Cli {
     /// Vault file (default: `$HOME/.vault/vault.vlt`).
     #[arg(long, global = true)]
     vault: Option<PathBuf>,
+    /// Proceed past a rollback warning without prompting (does not lower the anchor). Constraint C16.
+    #[arg(long, global = true)]
+    allow_rollback: bool,
+    /// On a fresh machine (no anchor yet), require the vault to be at least this version — a
+    /// trust-on-first-use mitigation against being served an old copy (constraint C16).
+    #[arg(long, global = true, value_name = "N")]
+    expect_min_version: Option<u64>,
     #[command(subcommand)]
     command: Command,
 }
@@ -106,7 +113,13 @@ enum Command {
 fn main() -> std::process::ExitCode {
     vault_core::memory::harden_process(); // C25: disable core dumps before touching secrets
     let cli = Cli::parse();
-    match commands::dispatch(cli.vault, cli.command) {
+    let opts = commands::OpenOpts {
+        allow_rollback: cli.allow_rollback,
+        expect_min_version: cli.expect_min_version,
+    };
+    // A rollback abort exits with code 2 from inside the open path (constraint C16); a normal
+    // failure returns Err and maps to 1.
+    match commands::dispatch(cli.vault, &opts, cli.command) {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("vault: {e}");

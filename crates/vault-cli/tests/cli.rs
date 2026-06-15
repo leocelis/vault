@@ -3,13 +3,23 @@
 //! nothing. Covers init → import → ls → get → wrong-password → rm → gen, plus the C18 on-disk check.
 
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Run the `vault` binary with `args`, feeding `stdin`. Returns (success, stdout, stderr).
-fn run(args: &[&str], stdin: &str) -> (bool, String, String) {
+/// A per-process temp dir used as `HOME`/`XDG_DATA_HOME` for the child, so the C16 rollback anchor
+/// lands in an isolated location and never touches the developer's real data dir.
+fn shared_home() -> PathBuf {
+    let p = std::env::temp_dir().join(format!("vault-it-home-{}", std::process::id()));
+    std::fs::create_dir_all(&p).ok();
+    p
+}
+
+/// Run the `vault` binary under an isolated `home`, feeding `stdin`. Returns (exit code, out, err).
+fn run_env(home: &Path, args: &[&str], stdin: &str) -> (Option<i32>, String, String) {
     let mut child = Command::new(env!("CARGO_BIN_EXE_vault"))
+        .env("HOME", home)
+        .env("XDG_DATA_HOME", home.join("share"))
         .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -24,10 +34,16 @@ fn run(args: &[&str], stdin: &str) -> (bool, String, String) {
         .unwrap();
     let out = child.wait_with_output().unwrap();
     (
-        out.status.success(),
+        out.status.code(),
         String::from_utf8_lossy(&out.stdout).into_owned(),
         String::from_utf8_lossy(&out.stderr).into_owned(),
     )
+}
+
+/// Run with the shared isolated home; returns (success, stdout, stderr).
+fn run(args: &[&str], stdin: &str) -> (bool, String, String) {
+    let (code, out, err) = run_env(&shared_home(), args, stdin);
+    (code == Some(0), out, err)
 }
 
 fn contains(haystack: &[u8], needle: &[u8]) -> bool {
@@ -120,4 +136,87 @@ fn cli_end_to_end() {
     assert!(err.contains("bits of entropy"));
 
     let _ = std::fs::remove_file(&vault);
+}
+
+fn unique_dir(tag: &str) -> PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let p = std::env::temp_dir().join(format!("vault-it-{tag}-{}-{}", std::process::id(), nanos));
+    std::fs::create_dir_all(&p).ok();
+    p
+}
+
+/// C16 / UC-07: a sync backend serving an older copy is detected against the local anchor.
+#[test]
+fn cli_rollback_detection() {
+    let home = unique_dir("rb-home"); // isolated HOME/XDG so the anchor is sandboxed
+    let vault = unique_vault();
+    let vs = vault.to_str().unwrap();
+    let pw = "rollback-pass\n";
+    let fast = [
+        "--kdf-m-cost",
+        "8192",
+        "--kdf-t-cost",
+        "1",
+        "--kdf-p-cost",
+        "1",
+    ];
+
+    // init → version 1, anchor = 1
+    let mut init_args = vec!["--vault", vs, "init"];
+    init_args.extend_from_slice(&fast);
+    let (code, _, err) = run_env(&home, &init_args, pw);
+    assert_eq!(code, Some(0), "init: {err}");
+
+    // snapshot the v1 file, then bump the vault to v2 (anchor advances to 2)
+    let saved_v1 = unique_vault();
+    std::fs::copy(&vault, &saved_v1).unwrap();
+    let mut up_args = vec!["--vault", vs, "upgrade-kdf"];
+    up_args.extend_from_slice(&fast);
+    let (code, _, err) = run_env(&home, &up_args, pw);
+    assert_eq!(code, Some(0), "upgrade-kdf: {err}");
+
+    // a malicious/buggy backend serves the OLD copy back
+    std::fs::copy(&saved_v1, &vault).unwrap();
+
+    // non-interactive open → rollback → exit code 2 (reserved), warning on stderr, no prompt
+    let (code, _, err) = run_env(&home, &["--vault", vs, "ls"], pw);
+    assert_eq!(code, Some(2), "expected exit 2 on rollback; stderr: {err}");
+    assert!(err.contains("version regressed"), "stderr: {err}");
+
+    // --allow-rollback proceeds (exit 0), still printing the warning
+    let (code, _, err) = run_env(&home, &["--vault", vs, "ls", "--allow-rollback"], pw);
+    assert_eq!(code, Some(0), "allow-rollback should proceed: {err}");
+    assert!(err.contains("version regressed"), "stderr: {err}");
+
+    // TOFU: wipe the anchor → the first open of the old copy is trusted (no warning, exit 0)
+    std::fs::remove_dir_all(&home).ok();
+    std::fs::create_dir_all(&home).ok();
+    let (code, _, err) = run_env(&home, &["--vault", vs, "ls"], pw);
+    assert_eq!(code, Some(0), "TOFU open should succeed: {err}");
+    assert!(
+        !err.contains("version regressed"),
+        "no warning on TOFU: {err}"
+    );
+
+    // --expect-min-version pins a floor even on a fresh machine → trips the guard
+    std::fs::remove_dir_all(&home).ok();
+    std::fs::create_dir_all(&home).ok();
+    let (code, _, err) = run_env(
+        &home,
+        &["--vault", vs, "--expect-min-version", "99", "ls"],
+        pw,
+    );
+    assert_eq!(
+        code,
+        Some(2),
+        "expect-min-version floor should trip rollback: {err}"
+    );
+    assert!(err.contains("version regressed"), "stderr: {err}");
+
+    let _ = std::fs::remove_file(&vault);
+    let _ = std::fs::remove_file(&saved_v1);
+    let _ = std::fs::remove_dir_all(&home);
 }

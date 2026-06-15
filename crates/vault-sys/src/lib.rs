@@ -81,6 +81,39 @@ pub fn unlock_region(ptr: *const u8, len: usize) {
     }
 }
 
+/// Take an exclusive advisory lock on the open file descriptor `fd` (constraint C16 anchor write).
+///
+/// Blocks until the lock is acquired. Best-effort: returns `false` if locking is unsupported or
+/// failed (the caller proceeds without mutual exclusion, accepting the documented TOCTOU window).
+/// On non-Unix this is a no-op returning `false`.
+pub fn flock_exclusive(fd: i32) -> bool {
+    #[cfg(unix)]
+    {
+        // SAFETY: flock takes a scalar fd and operation; it does not dereference memory.
+        unsafe { libc::flock(fd, libc::LOCK_EX) == 0 }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = fd;
+        false
+    }
+}
+
+/// Release an advisory lock previously taken with [`flock_exclusive`].
+pub fn flock_unlock(fd: i32) {
+    #[cfg(unix)]
+    {
+        // SAFETY: see `flock_exclusive`; LOCK_UN is the inverse and dereferences nothing.
+        unsafe {
+            libc::flock(fd, libc::LOCK_UN);
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = fd;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

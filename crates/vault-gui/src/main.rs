@@ -173,15 +173,21 @@ impl VaultApp {
                     v.kdf_strength(),
                     vault_core::crypto::KdfStrength::BelowFloor
                 );
+                // C16 rollback check: warn (and don't advance) on a regression, else advance anchor.
+                let rollback_warn = rollback_check_and_advance(&v);
                 self.vault = Some(v);
                 self.pw_input.zeroize();
                 self.pw_confirm.zeroize();
                 self.focus_search = true;
-                self.status = if weak {
-                    "Unlocked — note: this vault's KDF is below the recommended floor.".into()
+                if let Some(w) = rollback_warn {
+                    self.error = Some(w);
+                    self.status = "Unlocked — see the warning above.".into();
+                } else if weak {
+                    self.status =
+                        "Unlocked — note: this vault's KDF is below the recommended floor.".into();
                 } else {
-                    "Unlocked.".into()
-                };
+                    self.status = "Unlocked.".into();
+                }
             }
             Err(e) => {
                 self.pw_input.zeroize();
@@ -222,6 +228,7 @@ impl VaultApp {
             self.error = Some(e);
             return;
         }
+        advance_anchor_for(&v); // C16: seed the local anchor at the initial version
         self.vault = Some(v);
         self.vault_exists = true;
         self.pw_input.zeroize();
@@ -242,11 +249,14 @@ impl VaultApp {
         self.focus_password = true;
     }
 
-    /// Save the open vault to disk through the core's body-writing save (atomic, 0600).
+    /// Save the open vault to disk through the core's body-writing save (atomic, 0600), then advance
+    /// the local rollback anchor to the new version (C16).
     fn persist(&mut self) -> Result<(), String> {
         let vault = self.vault.as_mut().ok_or("vault is locked")?;
         let bytes = vault.save().map_err(|e| e.to_string())?;
-        write_vault(&self.path, &bytes)
+        write_vault(&self.path, &bytes)?;
+        advance_anchor_for(vault);
+        Ok(())
     }
 
     // ─── entry actions ──────────────────────────────────────────────────────
@@ -933,6 +943,32 @@ impl eframe::App for VaultApp {
 }
 
 // ─── free helpers ────────────────────────────────────────────────────────────
+
+/// Advance the local rollback anchor to the vault's current version (C16). Best-effort.
+fn advance_anchor_for(vault: &Vault) {
+    if let Ok(anchor) = vault_core::rollback::anchor_path(vault.vault_id()) {
+        let _ = vault_core::rollback::advance_anchor(&anchor, vault.version());
+    }
+}
+
+/// Check the opened vault against the local anchor (C16). On a regression, return a warning string
+/// and leave the anchor unchanged; otherwise advance the anchor and return `None`. The GUI is
+/// interactive on the user's own machine, so it warns rather than hard-aborting.
+fn rollback_check_and_advance(vault: &Vault) -> Option<String> {
+    use vault_core::rollback::{self, RollbackCheck};
+    let anchor = rollback::anchor_path(vault.vault_id()).ok()?;
+    let last_seen = rollback::read_anchor(&anchor);
+    match rollback::check(vault.version(), last_seen) {
+        RollbackCheck::Ok => {
+            let _ = rollback::advance_anchor(&anchor, vault.version());
+            None
+        }
+        RollbackCheck::Regressed { expected, got } => Some(format!(
+            "⚠ Rollback warning: this vault is version {got}, but this machine last saw {expected}. \
+             The storage backend may have served an older copy — verify before relying on it."
+        )),
+    }
+}
 
 fn default_vault_path() -> Result<PathBuf, String> {
     let home = std::env::var_os("HOME")
