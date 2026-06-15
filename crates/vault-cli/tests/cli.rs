@@ -148,6 +148,43 @@ fn unique_dir(tag: &str) -> PathBuf {
     p
 }
 
+/// 2FA: `vault otp <name>` wires up and reports a missing secret clearly. (Code generation itself
+/// is proven by the RFC 6238 vectors in `vault-core::totp`.)
+#[test]
+fn cli_otp_requires_a_2fa_secret() {
+    let home = unique_dir("otp-home");
+    let vault = unique_vault();
+    let vs = vault.to_str().unwrap();
+    let pw = "otp-pass\n";
+    let fast = [
+        "--kdf-m-cost",
+        "8192",
+        "--kdf-t-cost",
+        "1",
+        "--kdf-p-cost",
+        "1",
+    ];
+
+    let mut init_args = vec!["--vault", vs, "init"];
+    init_args.extend_from_slice(&fast);
+    assert_eq!(run_env(&home, &init_args, pw).0, Some(0), "init");
+
+    let sample = sample_path();
+    let sp = sample.to_str().unwrap();
+    assert_eq!(
+        run_env(&home, &["--vault", vs, "import", "--format", "raw", sp], pw).0,
+        Some(0),
+        "import"
+    );
+
+    let (code, _, err) = run_env(&home, &["--vault", vs, "otp", "github", "--stdout"], pw);
+    assert!(code != Some(0), "otp without a 2FA secret should fail");
+    assert!(err.contains("no 2FA secret"), "stderr: {err}");
+
+    let _ = std::fs::remove_file(&vault);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
 /// C26 diceware: `vault gen --words N` emits an N-word passphrase from the built-in list.
 #[test]
 fn cli_gen_passphrase() {

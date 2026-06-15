@@ -51,6 +51,7 @@ pub fn dispatch(vault_opt: Option<PathBuf>, opts: &OpenOpts, command: Command) -
             timeout,
             opts,
         ),
+        Command::Otp { name, stdout } => cmd_otp(&vault_path(vault_opt)?, &name, stdout, opts),
         Command::HoldClipboard { secs } => run_clipboard_holder(secs),
         Command::Gen {
             length,
@@ -219,6 +220,34 @@ fn cmd_get(
     Ok(())
 }
 
+fn cmd_otp(path: &Path, name: &str, stdout: bool, opts: &OpenOpts) -> CmdResult {
+    let password = prompt_password(false)?;
+    let vault = open_vault(path, password.as_bytes(), opts)?;
+    let entry = vault
+        .get(name)
+        .ok_or_else(|| format!("no entry titled {name:?}"))?;
+    let otp = entry
+        .otp_secret
+        .as_ref()
+        .ok_or_else(|| format!("{name:?} has no 2FA secret (add one with `vault edit`)"))?;
+    let code = vault_core::totp::generate_now(&otp.expose())
+        .map_err(|_| "the stored 2FA secret is not valid base32".to_string())?;
+
+    if stdout {
+        println!("{}", code.code);
+        eprintln!("(valid for {}s)", code.valid_for_secs);
+    } else {
+        copy_to_clipboard(code.code.as_bytes())?;
+        // Clear when the code rolls over so a stale code doesn't linger on the clipboard (C13).
+        spawn_clipboard_holder(code.code.as_bytes(), code.valid_for_secs.max(1))?;
+        eprintln!(
+            "Copied 2FA code for {name:?} (valid {}s).",
+            code.valid_for_secs
+        );
+    }
+    Ok(())
+}
+
 fn cmd_gen(
     length: usize,
     charset: &str,
@@ -318,6 +347,12 @@ fn cmd_add(path: &Path, name: &str, opts: &OpenOpts) -> CmdResult {
         entered
     };
     let notes = prompt_line("Notes (optional): ")?;
+    let otp_in = prompt_secret_value("2FA secret (base32, blank for none): ")?;
+    let otp_secret = if otp_in.is_empty() {
+        None
+    } else {
+        Some(Protected::new(otp_in.as_bytes().to_vec()))
+    };
 
     let now = now_unix();
     vault.add_entry(Entry {
@@ -328,7 +363,7 @@ fn cmd_add(path: &Path, name: &str, opts: &OpenOpts) -> CmdResult {
         url,
         notes,
         tags: Vec::new(),
-        otp_secret: None,
+        otp_secret,
         created_at: now,
         modified_at: now,
         expires_at: None,
@@ -369,6 +404,12 @@ fn cmd_edit(path: &Path, name: &str, opts: &OpenOpts) -> CmdResult {
         None
     };
     let notes = prompt_line_default("Notes", &cur_notes)?;
+    // 2FA: change/set/clear the TOTP secret. Blank keeps the current one; "-" clears it.
+    let otp_change = if confirm("Change the 2FA secret?")? {
+        Some(prompt_secret_value("2FA secret (base32, '-' to clear): ")?)
+    } else {
+        None
+    };
 
     let e = vault.entry_mut(name).expect("entry existed a moment ago");
     e.username = username;
@@ -376,6 +417,15 @@ fn cmd_edit(path: &Path, name: &str, opts: &OpenOpts) -> CmdResult {
     e.notes = notes;
     if let Some(s) = &new_secret {
         e.password = Protected::new(s.as_bytes().to_vec());
+    }
+    if let Some(otp) = &otp_change {
+        let t = otp.trim();
+        if t == "-" {
+            e.otp_secret = None; // explicit clear
+        } else if !t.is_empty() {
+            e.otp_secret = Some(Protected::new(t.as_bytes().to_vec()));
+        }
+        // blank → keep the current 2FA secret unchanged
     }
     e.modified_at = now_unix();
     let out = vault.save().map_err(|e| e.to_string())?;
@@ -614,11 +664,13 @@ fn write_vault(path: &Path, bytes: &[u8]) -> CmdResult {
 /// Read the master password without echo (TTY) or from stdin (non-interactive). Never from argv.
 fn prompt_password(confirm_match: bool) -> Result<Zeroizing<String>, String> {
     if !std::io::stdin().is_terminal() {
-        let mut s = String::new();
+        // Read exactly one line so the remaining stdin is available to later prompts (scriptable
+        // `add`/`edit`); strip the trailing newline.
+        let mut s = Zeroizing::new(String::new());
         std::io::stdin()
-            .read_to_string(&mut s)
+            .read_line(&mut s)
             .map_err(|e| e.to_string())?;
-        let line = s.lines().next().unwrap_or("").to_string();
+        let line = s.trim_end_matches(['\n', '\r']).to_string();
         return Ok(Zeroizing::new(line));
     }
     let p =

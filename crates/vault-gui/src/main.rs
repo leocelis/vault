@@ -69,6 +69,8 @@ struct Editor {
     url: String,
     notes: String,
     password: String,
+    /// 2FA secret (base32); empty = none.
+    otp: String,
     show_password: bool,
     confirm_delete: bool,
     error: Option<String>,
@@ -83,6 +85,7 @@ impl Editor {
             url: String::new(),
             notes: String::new(),
             password: String::new(),
+            otp: String::new(),
             show_password: false,
             confirm_delete: false,
             error: None,
@@ -93,6 +96,7 @@ impl Editor {
 impl Drop for Editor {
     fn drop(&mut self) {
         self.password.zeroize();
+        self.otp.zeroize();
     }
 }
 
@@ -111,6 +115,7 @@ enum Action {
     ToggleReveal,
     CopyPassword(usize),
     CopyUsername(usize),
+    CopyOtp(usize),
     Edit(usize),
     SetPadding(bool),
     SetAutoLock(u64),
@@ -356,6 +361,29 @@ impl VaultApp {
         }
     }
 
+    fn copy_otp(&mut self, idx: usize) {
+        let generated = self
+            .vault
+            .as_ref()
+            .and_then(|v| v.entries().get(idx))
+            .and_then(|e| e.otp_secret.as_ref())
+            .map(|p| vault_core::totp::generate_now(&p.expose()));
+        match generated {
+            Some(Ok(c)) => {
+                let secret = Zeroizing::new(c.code.clone().into_bytes());
+                match clip::copy(&secret) {
+                    Ok(()) => {
+                        clip::schedule_clear(secret, c.valid_for_secs.max(1));
+                        self.status = format!("Copied 2FA code — valid {}s.", c.valid_for_secs);
+                    }
+                    Err(e) => self.error = Some(e),
+                }
+            }
+            Some(Err(_)) => self.error = Some("the stored 2FA secret is not valid base32".into()),
+            None => {}
+        }
+    }
+
     fn begin_edit(&mut self, idx: usize) {
         if let Some(e) = self.vault.as_ref().and_then(|v| v.entries().get(idx)) {
             self.editor = Some(Editor {
@@ -365,6 +393,11 @@ impl VaultApp {
                 url: e.url.clone(),
                 notes: e.notes.clone(),
                 password: String::new(),
+                otp: e
+                    .otp_secret
+                    .as_ref()
+                    .map(|p| String::from_utf8_lossy(&p.expose()).into_owned())
+                    .unwrap_or_default(),
                 show_password: false,
                 confirm_delete: false,
                 error: None,
@@ -375,7 +408,7 @@ impl VaultApp {
     fn commit_editor(&mut self) {
         // Snapshot the form first, so we don't hold a borrow of `self.editor` while we mutate the
         // vault (both are fields of `self`).
-        let (original, title, username, url, notes, password) = {
+        let (original, title, username, url, notes, password, otp) = {
             let Some(ed) = self.editor.as_ref() else {
                 return;
             };
@@ -386,7 +419,14 @@ impl VaultApp {
                 ed.url.trim().to_string(),
                 ed.notes.clone(),
                 Zeroizing::new(ed.password.clone()),
+                Zeroizing::new(ed.otp.trim().to_string()),
             )
+        };
+        // A form-style edit: the 2FA field reflects the desired final state (empty = none).
+        let otp_secret = if otp.is_empty() {
+            None
+        } else {
+            Some(Protected::new(otp.as_bytes().to_vec()))
         };
         if title.is_empty() {
             if let Some(ed) = self.editor.as_mut() {
@@ -418,7 +458,7 @@ impl VaultApp {
                         url,
                         notes,
                         tags: Vec::new(),
-                        otp_secret: None,
+                        otp_secret,
                         created_at: now,
                         modified_at: now,
                         expires_at: None,
@@ -434,6 +474,7 @@ impl VaultApp {
                     if !password.is_empty() {
                         e.password = Protected::new(password.as_bytes().to_vec());
                     }
+                    e.otp_secret = otp_secret;
                     e.modified_at = now;
                 }
             }
@@ -766,6 +807,12 @@ impl VaultApp {
                 .filter(|f| matches!(f.value, CustomValue::Protected(_)))
                 .map(|f| one_line(&f.name))
                 .collect();
+            // Live TOTP code (refreshes each second because the app repaints on a 1s timer).
+            let otp_display: Option<(String, u64)> = e.otp_secret.as_ref().and_then(|p| {
+                vault_core::totp::generate_now(&p.expose())
+                    .ok()
+                    .map(|c| (c.code, c.valid_for_secs))
+            });
 
             ui.add_space(6.0);
             ui.heading(&title);
@@ -808,6 +855,23 @@ impl VaultApp {
                         }
                     });
                     ui.end_row();
+
+                    if let Some((code, secs)) = &otp_display {
+                        ui.label("2FA code");
+                        ui.horizontal(|ui| {
+                            let pretty = if code.len() == 6 {
+                                format!("{} {}", &code[..3], &code[3..])
+                            } else {
+                                code.clone()
+                            };
+                            ui.monospace(pretty);
+                            ui.weak(format!("({secs}s)"));
+                            if ui.button("📋 Copy").clicked() {
+                                action = Some(Action::CopyOtp(idx));
+                            }
+                        });
+                        ui.end_row();
+                    }
                 });
 
             if !notes.is_empty() {
@@ -839,6 +903,7 @@ impl VaultApp {
                 Action::ToggleReveal => self.reveal = !self.reveal,
                 Action::CopyPassword(i) => self.copy_password(i),
                 Action::CopyUsername(i) => self.copy_username(i),
+                Action::CopyOtp(i) => self.copy_otp(i),
                 Action::Edit(i) => self.begin_edit(i),
                 Action::SetPadding(on) => self.set_padding(on),
                 Action::SetAutoLock(secs) => {
@@ -929,6 +994,15 @@ impl VaultApp {
                                     generate_pass = true;
                                 }
                             });
+                            ui.end_row();
+
+                            ui.label("2FA secret");
+                            ui.add(
+                                egui::TextEdit::singleline(&mut ed.otp)
+                                    .desired_width(280.0)
+                                    .password(true)
+                                    .hint_text("base32 (optional) — for TOTP codes"),
+                            );
                             ui.end_row();
 
                             ui.label("Notes");

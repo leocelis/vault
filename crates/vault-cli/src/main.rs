@@ -61,6 +61,13 @@ enum Command {
         #[arg(long)]
         search: Option<String>,
     },
+    /// Generate the current 2FA (TOTP) code for an entry — to the clipboard by default.
+    Otp {
+        name: String,
+        /// Print the code to stdout instead of copying it (readable by other processes).
+        #[arg(long)]
+        stdout: bool,
+    },
     /// Get a field — to the clipboard by default. `--stdout` prints it (with a warning).
     Get {
         name: String,
