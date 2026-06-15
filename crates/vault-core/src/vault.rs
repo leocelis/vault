@@ -6,9 +6,12 @@
 //! Save:  regenerate `master_seed` + `nonce_prefix` (a body-writing save — C8/C1), bump
 //!        `vault_version` (C16), serialize → STREAM-encrypt → HmacBlockStream-frame → seal header.
 //!
-//! NOTE (C19, deferred): Protected fields are serialized inside the AEAD payload but the inner
-//! ChaCha20 stream pass is not yet applied — confidentiality at rest is provided by the outer AEAD
-//! (C1); C19's in-memory defense-in-depth lands in a later segment.
+//! NOTE (C19): the on-disk inner-stream pass IS applied — Protected field values are ChaCha20
+//! stream-encrypted under the per-save `inner_stream_key` inside the AEAD payload (see
+//! `format::inner_stream`), so they are double-encrypted at rest. The remaining C19 clause is the
+//! *in-memory* decrypt-on-access protection (keeping Protected bytes encrypted in RAM until a field
+//! accessor runs); that is a scoped follow-up. Confidentiality at rest is anchored by the outer AEAD
+//! (C1); the inner stream is defense-in-depth there and the primary defense in memory once layered.
 
 use secrecy::ExposeSecret;
 use zeroize::{Zeroize, Zeroizing};

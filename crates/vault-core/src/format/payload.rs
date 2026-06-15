@@ -16,6 +16,7 @@
 
 use super::cursor::Cursor;
 use super::entry::{Entry, Protected};
+use super::inner_stream::InnerStream;
 use super::tlv::{self, MAX_ENTRY_LEN};
 use crate::{Error, Result};
 
@@ -45,6 +46,10 @@ pub struct Payload {
 
 impl Payload {
     /// Serialize the payload to its plaintext TLV form (pre-encryption).
+    ///
+    /// The inner header (algorithm + `inner_stream_key`) is written in the clear (it is protected by
+    /// the outer AEAD); every entry's Protected field values are then inner-stream encrypted under
+    /// that key through one advancing [`InnerStream`], in entry order (constraint C19).
     pub fn serialize(&self) -> Vec<u8> {
         let mut out = Vec::new();
         tlv::write_record(&mut out, tag::INNER_ALGO, &[INNER_STREAM_CHACHA20]);
@@ -54,19 +59,24 @@ impl Payload {
             tag::VAULT_VERSION,
             &self.vault_version.to_le_bytes(),
         );
+        let mut inner = InnerStream::new(self.inner_stream_key.expose());
         for e in &self.entries {
-            tlv::write_record(&mut out, tag::ENTRY, &e.serialize());
+            tlv::write_record(&mut out, tag::ENTRY, &e.serialize(&mut inner));
         }
         tlv::write_record(&mut out, tag::END, &[]);
         out
     }
 
     /// Parse a decrypted payload. Stops at the `0x0000` end marker or a clean end of buffer.
+    ///
+    /// Entries are collected first, then decoded through one [`InnerStream`] built from the parsed
+    /// `inner_stream_key` — so the key is always available before any Protected field is decrypted,
+    /// regardless of record order (constraint C19).
     pub fn parse(bytes: &[u8]) -> Result<Payload> {
         let mut cur = Cursor::new(bytes);
         let mut inner_key: Option<Protected> = None;
         let mut version: Option<u64> = None;
-        let mut entries = Vec::new();
+        let mut entry_blobs: Vec<&[u8]> = Vec::new();
 
         while let Some((t, v)) = tlv::read_record(&mut cur, MAX_ENTRY_LEN)? {
             match t {
@@ -83,13 +93,20 @@ impl Payload {
                     inner_key = Some(Protected::new(v.to_vec()));
                 }
                 tag::VAULT_VERSION => version = Some(tlv::decode_u64(v)?),
-                tag::ENTRY => entries.push(Entry::parse(v)?),
+                tag::ENTRY => entry_blobs.push(v),
                 _ => { /* unknown record — skip for forward compatibility */ }
             }
         }
 
+        let inner_key = inner_key.ok_or(Error::BodyMalformed)?;
+        let mut inner = InnerStream::new(inner_key.expose());
+        let mut entries = Vec::with_capacity(entry_blobs.len());
+        for blob in entry_blobs {
+            entries.push(Entry::parse(blob, &mut inner)?);
+        }
+
         Ok(Payload {
-            inner_stream_key: inner_key.ok_or(Error::BodyMalformed)?,
+            inner_stream_key: inner_key,
             vault_version: version.ok_or(Error::BodyMalformed)?,
             entries,
         })
@@ -133,6 +150,26 @@ mod tests {
     fn round_trip() {
         let p = sample();
         assert_eq!(Payload::parse(&p.serialize()).unwrap(), p);
+    }
+
+    #[test]
+    fn protected_fields_not_plaintext_in_serialized_payload() {
+        // C19 (at-rest defense-in-depth): inside the outer-AEAD-decrypted payload, a Protected
+        // field's bytes are ChaCha20-encrypted — the plaintext secret must not be findable — yet a
+        // normal parse recovers it.
+        let secret = b"UNIQUE-passw0rd-DEADBEEF-not-in-bytes";
+        let p = Payload {
+            inner_stream_key: Protected::new(vec![0x5A; INNER_STREAM_KEY_LEN]),
+            vault_version: 1,
+            entries: vec![entry(1, "svc", secret)],
+        };
+        let bytes = p.serialize();
+        assert!(
+            !bytes.windows(secret.len()).any(|w| w == secret),
+            "Protected field must be inner-stream encrypted in the serialized payload"
+        );
+        let parsed = Payload::parse(&bytes).unwrap();
+        assert_eq!(parsed.entries[0].password.expose(), secret);
     }
 
     #[test]
