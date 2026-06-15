@@ -152,6 +152,19 @@ All notable changes to this project are documented here. The format is based on
   timer) and a "2FA secret" field in the editor. Adds the audited `sha1` crate (used **only** for
   TOTP, never at rest). Also made the CLI master-password prompt read a single line so `add`/`edit`
   are scriptable. 5 new tests.
+- **YubiKey 2FA — hardware second factor (UC-09, CLI).** `vault enroll yubikey` turns the master
+  password into a **required-both** second factor: the data key is re-wrapped under
+  `HKDF(Argon2id(password) ‖ YubiKey-HMAC-SHA1-response)` in a composite `PW_YUBIKEY` stanza, so the
+  password **alone no longer unlocks** — the key must be tapped too. Anti-lockout: enrollment prints
+  a one-time high-entropy **recovery code** (a separate stanza); `vault --recovery <cmd>` unlocks
+  without the key if it's lost. The product owns enrollment (it programs the key's slot 2 via
+  `ykman` and computes responses — no manual setup), driven as a subprocess like the clipboard tools
+  (so no FFI, no `unsafe`, no new build deps; needs `ykman` at runtime only when you opt in). A fixed
+  per-enrollment challenge means you tap on **unlock only**, not on every save. Works on older
+  YubiKeys (4/NEO) that lack FIDO2. New `vault-hardware::yubikey`, `Vault::open_2fa` /
+  `enroll_yubikey_2fa` / `requires_yubikey`, `Error::Hardware`. Fully unit-tested with a mock key
+  response (the physical tap is verified manually). *(Desktop-app enrollment + the UC-09 AND-model
+  intent amendment land next.)*
 - **Cross-desktop CI (works on any desktop).** The build+test matrix now covers **Linux, macOS,
   and Windows including the egui GUI**: the Linux jobs install the windowing/dialog system libs
   (`libgtk-3-dev`, `libxcb-*`, `libxkbcommon-dev`), and the CLI integration tests sandbox the

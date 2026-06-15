@@ -64,6 +64,11 @@ pub enum Error {
     #[error("vault version regressed; the sync backend may have served an older copy")]
     Rollback,
 
+    /// A hardware second factor (YubiKey) operation failed — the device is absent, `ykman` is not
+    /// installed, or the challenge-response errored. Carries a non-secret human message (C16/UC-09).
+    #[error("hardware factor error: {0}")]
+    Hardware(String),
+
     /// Underlying I/O error.
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),

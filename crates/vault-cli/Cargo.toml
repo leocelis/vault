@@ -16,18 +16,10 @@ path = "src/main.rs"
 
 [dependencies]
 vault-core = { path = "../vault-core", version = "0.0.0" }
+# The YubiKey 2FA path shells out to `ykman` (std subprocess), so this is a cheap, always-on dep.
+vault-hardware = { path = "../vault-hardware", version = "0.0.0" }
 clap.workspace = true
 getrandom.workspace = true
 rpassword.workspace = true
 zeroize.workspace = true
 secrecy.workspace = true
-
-[features]
-default = []
-# Enable optional hardware-backed stanzas.
-hardware = ["dep:vault-hardware"]
-
-[dependencies.vault-hardware]
-path = "../vault-hardware"
-version = "0.0.0"
-optional = true

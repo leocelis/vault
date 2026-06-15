@@ -30,6 +30,9 @@ struct Cli {
     /// trust-on-first-use mitigation against being served an old copy (constraint C16).
     #[arg(long, global = true, value_name = "N")]
     expect_min_version: Option<u64>,
+    /// Unlock a YubiKey-2FA vault with its recovery code instead of the key (anti-lockout, UC-09).
+    #[arg(long, global = true)]
+    recovery: bool,
     #[command(subcommand)]
     command: Command,
 }
@@ -115,6 +118,11 @@ enum Command {
     },
     /// Benchmark and recommend Argon2id parameters (constraint C22). *(not yet implemented)*
     Tune,
+    /// Add a hardware second factor — currently `vault enroll yubikey` (UC-09, true 2FA).
+    Enroll {
+        /// Factor to enroll. Currently: `yubikey`.
+        factor: String,
+    },
     /// Toggle payload size-padding so the file's exact size is hidden (UC-07 §3.2). `vault pad on|off`.
     Pad {
         /// `on` to enable Padmé size-padding, `off` to disable it.
@@ -132,6 +140,7 @@ fn main() -> std::process::ExitCode {
     let opts = commands::OpenOpts {
         allow_rollback: cli.allow_rollback,
         expect_min_version: cli.expect_min_version,
+        recovery: cli.recovery,
     };
     // A rollback abort exits with code 2 from inside the open path (constraint C16); a normal
     // failure returns Err and maps to 1.

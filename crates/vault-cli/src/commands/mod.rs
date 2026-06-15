@@ -24,6 +24,8 @@ pub struct OpenOpts {
     pub allow_rollback: bool,
     /// On a fresh machine (no anchor), require at least this version (TOFU mitigation).
     pub expect_min_version: Option<u64>,
+    /// Unlock a YubiKey-2FA vault with its recovery code instead of the key (UC-09 anti-lockout).
+    pub recovery: bool,
 }
 
 /// Route a parsed command to its handler.
@@ -75,6 +77,7 @@ pub fn dispatch(vault_opt: Option<PathBuf>, opts: &OpenOpts, command: Command) -
         ),
         Command::Pad { state } => cmd_pad(&vault_path(vault_opt)?, &state, opts),
         Command::Tune => cmd_tune(),
+        Command::Enroll { factor } => cmd_enroll(&vault_path(vault_opt)?, &factor, opts),
         Command::Lock => Err("that command is not implemented yet".to_string()),
     }
 }
@@ -484,6 +487,78 @@ fn cmd_tune() -> CmdResult {
     Ok(())
 }
 
+fn cmd_enroll(path: &Path, factor: &str, opts: &OpenOpts) -> CmdResult {
+    match factor.to_lowercase().as_str() {
+        "yubikey" | "yk" => cmd_enroll_yubikey(path, opts),
+        other => Err(format!(
+            "unknown factor {other:?} (currently supported: yubikey)"
+        )),
+    }
+}
+
+fn cmd_enroll_yubikey(path: &Path, opts: &OpenOpts) -> CmdResult {
+    use vault_hardware::yubikey;
+    if !yubikey::available() {
+        return Err(
+            "no YubiKey detected — plug it in and install YubiKey Manager (`brew install ykman`)"
+                .to_string(),
+        );
+    }
+    // Unlock first: the data key must be in memory to re-wrap it under the new 2FA stanza.
+    let password = prompt_password(false)?;
+    let mut vault = open_vault(path, password.as_bytes(), opts)?;
+    if vault.is_2fa() {
+        return Err("this vault already has a YubiKey enrolled".to_string());
+    }
+    if std::io::stdin().is_terminal()
+        && !confirm(
+            "This programs slot 2 of your YubiKey (OVERWRITING it) and will require the key on \
+             every unlock. Continue?",
+        )?
+    {
+        return Err("aborted".to_string());
+    }
+
+    eprintln!("Programming slot 2 — touch the key when it blinks…");
+    yubikey::program_chalresp_slot2()?;
+
+    let mut challenge = [0u8; 32];
+    getrandom::getrandom(&mut challenge).map_err(|e| e.to_string())?;
+    eprintln!("Touch your YubiKey again to finish enrollment…");
+    let hw_response = yubikey::challenge_response(&challenge)?;
+
+    let recovery = recovery_code()?;
+    vault
+        .enroll_yubikey_2fa(
+            password.as_bytes(),
+            &hw_response,
+            &challenge,
+            recovery.as_bytes(),
+        )
+        .map_err(|e| e.to_string())?;
+    let out = vault.save().map_err(|e| e.to_string())?;
+    write_vault(path, &out)?;
+    note_saved(&vault);
+
+    eprintln!("\n✅ YubiKey enrolled — this vault now requires the master password AND the key.\n");
+    eprintln!("   RECOVERY CODE — write it down and store it OFFLINE. It unlocks WITHOUT the key,");
+    eprintln!("   so it is the only way back in if the key is lost:\n");
+    eprintln!("       {recovery}\n");
+    eprintln!("   Unlock with it using:  vault --recovery <command>");
+    Ok(())
+}
+
+/// A high-entropy recovery code: 24 alphanumerics (~143 bits) grouped 4-by-4 for readability.
+fn recovery_code() -> Result<String, String> {
+    let raw = gen_password(Charset::Alnum, 24).map_err(|e| e.to_string())?;
+    let chars: Vec<char> = raw.chars().collect();
+    Ok(chars
+        .chunks(4)
+        .map(|c| c.iter().collect::<String>())
+        .collect::<Vec<_>>()
+        .join("-"))
+}
+
 fn cmd_pad(path: &Path, state: &str, opts: &OpenOpts) -> CmdResult {
     use vault_core::pad::PadMode;
     let mode = match state.to_lowercase().as_str() {
@@ -578,7 +653,18 @@ fn open_vault(path: &Path, password: &[u8], opts: &OpenOpts) -> Result<Vault, St
     let bytes = read_vault(path)?;
     // Progress indicator for the Argon2id unlock so the user doesn't think it hung (constraint C22).
     eprintln!("Deriving key (Argon2id)…");
-    let vault = Vault::open(&bytes, password).map_err(|e| e.to_string())?;
+    // A YubiKey-2FA vault needs the key's tap — unless `--recovery`, which opens via the recovery
+    // code (entered at the password prompt) through the password path (UC-09 anti-lockout).
+    let vault = if Vault::requires_yubikey(&bytes) && !opts.recovery {
+        eprintln!("Touch your YubiKey…");
+        Vault::open_2fa(&bytes, password, |challenge| {
+            vault_hardware::yubikey::challenge_response(challenge)
+                .map_err(vault_core::Error::Hardware)
+        })
+        .map_err(|e| e.to_string())?
+    } else {
+        Vault::open(&bytes, password).map_err(|e| e.to_string())?
+    };
     if matches!(
         vault.kdf_strength(),
         vault_core::crypto::KdfStrength::BelowFloor
