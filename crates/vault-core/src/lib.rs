@@ -31,6 +31,7 @@ pub mod import; // UC-17   lenient keys.txt parser
 pub mod memory; // C11–C13, C25  secret types, mlock, constant-time
 pub mod pad; // UC-07 §3.2  optional Padmé payload padding
 pub mod rollback; // C16     monotonic counter + local anchor
+pub mod wordlist; // C26     built-in diceware wordlist
 mod vault; // open/save orchestration (the v0 vault-core API)
 
 mod error;

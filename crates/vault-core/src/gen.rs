@@ -63,6 +63,44 @@ pub fn password(charset: Charset, length: usize) -> Result<Zeroizing<String>> {
     Ok(out)
 }
 
+/// Generate a diceware passphrase of `words` words drawn uniformly from `wordlist`, joined by `-`.
+///
+/// Uses the same unbiased rejection sampling as [`password`], but over a `u32` index into the list,
+/// so each word is a uniform CSPRNG choice (constraint C26 — no human/LLM word selection).
+pub fn passphrase(words: usize, wordlist: &[&str]) -> Result<Zeroizing<String>> {
+    let n = wordlist.len();
+    if n < 2 {
+        return Err(Error::Crypto);
+    }
+    let n32 = n as u32;
+    // Largest multiple of n that fits in a u32; values >= this are rejected (no modulo bias).
+    let limit = (u32::MAX / n32) * n32;
+
+    let mut out = Zeroizing::new(String::new());
+    let mut produced = 0usize;
+    let mut buf = [0u8; 4];
+    while produced < words {
+        getrandom::getrandom(&mut buf).map_err(|_| Error::Crypto)?;
+        let r = u32::from_le_bytes(buf);
+        if r < limit {
+            if produced > 0 {
+                out.push('-');
+            }
+            out.push_str(wordlist[(r % n32) as usize]);
+            produced += 1;
+        }
+    }
+    Ok(out)
+}
+
+/// Entropy in bits of a `words`-word passphrase drawn from a list of `list_len` words.
+pub fn passphrase_entropy_bits(words: usize, list_len: usize) -> f64 {
+    if list_len < 2 {
+        return 0.0;
+    }
+    (list_len as f64).log2() * words as f64
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -110,5 +148,24 @@ mod tests {
             *password(Charset::Ascii, 24).unwrap(),
             *password(Charset::Ascii, 24).unwrap()
         );
+    }
+
+    #[test]
+    fn passphrase_shape_and_entropy() {
+        let list = crate::wordlist::BUILTIN;
+        let pp = passphrase(6, list).unwrap();
+        // 6 words → 5 separators; every chunk is a word from the list.
+        let parts: Vec<&str> = pp.split('-').collect();
+        assert_eq!(parts.len(), 6);
+        assert!(parts.iter().all(|w| list.contains(w)));
+        // 256-word list = 8 bits/word → 48 bits for 6 words.
+        assert!((passphrase_entropy_bits(6, list.len()) - 48.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn passphrases_differ_and_reject_tiny_lists() {
+        let list = crate::wordlist::BUILTIN;
+        assert_ne!(*passphrase(8, list).unwrap(), *passphrase(8, list).unwrap());
+        assert!(passphrase(4, &["only"]).is_err()); // list too small
     }
 }

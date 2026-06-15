@@ -56,7 +56,8 @@ pub fn dispatch(vault_opt: Option<PathBuf>, opts: &OpenOpts, command: Command) -
             length,
             charset,
             words,
-        } => cmd_gen(length, &charset, words),
+            wordlist,
+        } => cmd_gen(length, &charset, words, wordlist.as_deref()),
         Command::Add { name } => cmd_add(&vault_path(vault_opt)?, &name, opts),
         Command::Edit { name } => cmd_edit(&vault_path(vault_opt)?, &name, opts),
         Command::Rm { name } => cmd_rm(&vault_path(vault_opt)?, &name, opts),
@@ -218,24 +219,83 @@ fn cmd_get(
     Ok(())
 }
 
-fn cmd_gen(length: usize, charset: &str, words: Option<usize>) -> CmdResult {
+fn cmd_gen(
+    length: usize,
+    charset: &str,
+    words: Option<usize>,
+    wordlist: Option<&Path>,
+) -> CmdResult {
     use vault_core::gen::{entropy_bits, password, Charset};
-    if words.is_some() || charset == "words" {
-        return Err(
-            "the diceware `words` charset needs the EFF wordlist, not bundled yet".to_string(),
-        );
+
+    // Diceware passphrase mode: `--words N` (or `--charset words`, defaulting to 6 words).
+    if let Some(n) = words.or(if charset == "words" { Some(6) } else { None }) {
+        return cmd_gen_passphrase(n, wordlist);
     }
+
     if !(8..=256).contains(&length) {
         return Err("length must be between 8 and 256".to_string());
     }
     let cs = match charset {
         "alnum" => Charset::Alnum,
         "ascii" => Charset::Ascii,
-        other => return Err(format!("unknown charset {other:?} (use alnum or ascii)")),
+        other => {
+            return Err(format!(
+                "unknown charset {other:?} (use alnum, ascii, or words)"
+            ))
+        }
     };
     let pw = password(cs, length).map_err(|e| e.to_string())?;
     println!("{}", &*pw); // the generated password is the command's output
     eprintln!("({:.0} bits of entropy)", entropy_bits(cs, length));
+    Ok(())
+}
+
+fn cmd_gen_passphrase(n: usize, wordlist: Option<&Path>) -> CmdResult {
+    use vault_core::gen::{passphrase, passphrase_entropy_bits};
+    if !(3..=64).contains(&n) {
+        return Err("words must be between 3 and 64".to_string());
+    }
+    // Either a user-supplied wordlist (e.g. the EFF large list) or the built-in 256-word list.
+    let (list, source): (Vec<String>, &str) = match wordlist {
+        Some(p) => {
+            let text = std::fs::read_to_string(p)
+                .map_err(|e| format!("cannot read {}: {e}", p.display()))?;
+            // Accept plain "word\n" lines and EFF "<dice>\t<word>" lines (take the last token).
+            let list: Vec<String> = text
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .map(|l| {
+                    l.rsplit(char::is_whitespace)
+                        .next()
+                        .unwrap_or(l)
+                        .to_string()
+                })
+                .collect();
+            (list, "supplied")
+        }
+        None => (
+            vault_core::wordlist::BUILTIN
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+            "built-in 256-word",
+        ),
+    };
+    if list.len() < 16 {
+        return Err("wordlist too small (need at least 16 words)".to_string());
+    }
+    let refs: Vec<&str> = list.iter().map(String::as_str).collect();
+    let pp = passphrase(n, &refs).map_err(|e| e.to_string())?;
+    println!("{}", &*pp); // the passphrase is the command's output
+    eprintln!(
+        "({:.0} bits of entropy — {n} words from the {source} list of {})",
+        passphrase_entropy_bits(n, refs.len()),
+        refs.len()
+    );
+    if wordlist.is_none() {
+        eprintln!("(tip: for ~12.9 bits/word, use --wordlist with the EFF large list from https://www.eff.org/dice)");
+    }
     Ok(())
 }
 

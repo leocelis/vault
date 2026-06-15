@@ -27,6 +27,8 @@ use zeroize::{Zeroize, Zeroizing};
 const CLIPBOARD_TIMEOUT_SECS: u64 = 30;
 /// Length of a generated password (alphanumeric, ~119 bits at 20 chars).
 const GENERATED_LEN: usize = 20;
+/// Word count for a generated passphrase (built-in 256-word list → 8 bits/word; 8 words ≈ 64 bits).
+const GENERATED_WORDS: usize = 8;
 
 fn main() -> eframe::Result<()> {
     vault_core::memory::harden_process(); // C25: disable core dumps before touching secrets
@@ -802,6 +804,7 @@ impl VaultApp {
         let mut commit = false;
         let mut cancel = false;
         let mut generate = false;
+        let mut generate_pass = false;
         let mut delete = false;
 
         if let Some(ed) = self.editor.as_mut() {
@@ -846,9 +849,14 @@ impl VaultApp {
                             ui.end_row();
 
                             ui.label("");
-                            if ui.button("🎲 Generate strong password").clicked() {
-                                generate = true;
-                            }
+                            ui.horizontal(|ui| {
+                                if ui.button("🎲 Generate password").clicked() {
+                                    generate = true;
+                                }
+                                if ui.button("🔑 Passphrase").clicked() {
+                                    generate_pass = true;
+                                }
+                            });
                             ui.end_row();
 
                             ui.label("Notes");
@@ -897,6 +905,17 @@ impl VaultApp {
         if generate {
             if let Some(ed) = self.editor.as_mut() {
                 if let Ok(p) = gen_password(Charset::Alnum, GENERATED_LEN) {
+                    ed.password.zeroize();
+                    ed.password = p.to_string();
+                    ed.show_password = true;
+                }
+            }
+        }
+        if generate_pass {
+            if let Some(ed) = self.editor.as_mut() {
+                if let Ok(p) =
+                    vault_core::gen::passphrase(GENERATED_WORDS, vault_core::wordlist::BUILTIN)
+                {
                     ed.password.zeroize();
                     ed.password = p.to_string();
                     ed.show_password = true;

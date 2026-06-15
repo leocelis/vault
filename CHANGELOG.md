@@ -135,6 +135,14 @@ All notable changes to this project are documented here. The format is based on
   recommendation to stdout (scriptable) with an `upgrade-kdf` apply hint. Unlocking commands now also
   print a `Deriving key (Argon2id)…` progress line so a slow unlock doesn't look hung (C22). 2 new
   tests.
+- **Diceware passphrases (C26).** `vault gen --words N` now produces a CSPRNG passphrase (unbiased
+  rejection sampling over the word list, joined by `-`), and the desktop app's editor gains a
+  **"🔑 Passphrase"** button. Ships a verifiable **built-in 256-word list**
+  ([`wordlist`](crates/vault-core/src/wordlist.rs), exactly `2^8` → 8 bits/word, guarded by a
+  no-duplicates/format test) for zero-setup use; `--wordlist <file>` accepts a user-supplied list
+  (e.g. the EFF large list, ~12.9 bits/word — plain or `dice⇥word` lines). Entropy is reported.
+  `gen::passphrase()`/`passphrase_entropy_bits()` added. 4 new tests. *(The full EFF list isn't
+  bundled — it can't be reproduced offline without fabricating it; download it and pass `--wordlist`.)*
 - **Project-scoped Rust toolchain** ([`scripts/setup-rust.sh`](scripts/setup-rust.sh),
   [`scripts/dev-env.sh`](scripts/dev-env.sh), [`.envrc`](.envrc)): the toolchain installs into
   `./.toolchain` (git-ignored) via rustup's `RUSTUP_HOME`/`CARGO_HOME` + `--no-modify-path` — never

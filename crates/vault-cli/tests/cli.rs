@@ -148,6 +148,17 @@ fn unique_dir(tag: &str) -> PathBuf {
     p
 }
 
+/// C26 diceware: `vault gen --words N` emits an N-word passphrase from the built-in list.
+#[test]
+fn cli_gen_passphrase() {
+    let (ok, out, err) = run(&["gen", "--words", "6"], "");
+    assert!(ok, "gen --words failed: {err}");
+    let parts: Vec<&str> = out.trim().split('-').collect();
+    assert_eq!(parts.len(), 6, "expected 6 words: {out}");
+    assert!(parts.iter().all(|w| !w.is_empty()));
+    assert!(err.contains("bits of entropy"), "stderr: {err}");
+}
+
 /// C22: `vault tune` benchmarks Argon2id and prints a recommended m/t/p with the measured time.
 #[test]
 fn cli_tune_recommends_params() {

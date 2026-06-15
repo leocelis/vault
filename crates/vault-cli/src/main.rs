@@ -75,14 +75,18 @@ enum Command {
     },
     /// Add an entry. Secrets are read interactively, never from a flag. *(not yet implemented)*
     Add { name: String },
-    /// Generate a CSPRNG password (constraint C26). *(not yet implemented)*
+    /// Generate a CSPRNG password — or a diceware passphrase with `--words N` (constraint C26).
     Gen {
         #[arg(long, default_value_t = 20)]
         length: usize,
         #[arg(long, default_value = "ascii")]
         charset: String,
+        /// Generate a diceware passphrase of N words instead of a character password.
         #[arg(long)]
         words: Option<usize>,
+        /// Wordlist file for `--words` (e.g. the EFF large list); defaults to a built-in 256-word list.
+        #[arg(long)]
+        wordlist: Option<PathBuf>,
     },
     /// Edit an entry. *(not yet implemented)*
     Edit { name: String },
