@@ -69,6 +69,14 @@ All notable changes to this project are documented here. The format is based on
   the **alternate screen** so nothing a secret touches reaches terminal scrollback, and the secret
   is **never rendered** — only titles. Pure-Rust shell; all secret-handling stays in the core. This
   is the first "managed via the app" surface; egui/SwiftUI follow over the same core.
+- **Memory hardening (C12 + C25).** New isolated-`unsafe` crate **`vault-sys`** — the *one* place
+  `unsafe` lives (every other crate stays `#![forbid(unsafe_code)]`) — wraps `setrlimit`/`mlock`/
+  `munlock` behind a safe, best-effort API. `vault-core::memory` now provides `harden_process()`
+  (disables core dumps at startup, wired into the CLI and TUI — so a crash can't dump secrets to a
+  core file), `ct_eq` (constant-time comparison, C25), and a `PageLock` guard that mlocks the
+  transient decrypted-payload buffer off swap during open/save (C12, graceful degradation — warns
+  and continues if locking is unavailable). *(C19's in-memory inner-stream protection — keeping
+  Protected fields ChaCha20-encrypted in RAM until accessed — remains a scoped follow-up.)*
 - **Project-scoped Rust toolchain** ([`scripts/setup-rust.sh`](scripts/setup-rust.sh),
   [`scripts/dev-env.sh`](scripts/dev-env.sh), [`.envrc`](.envrc)): the toolchain installs into
   `./.toolchain` (git-ignored) via rustup's `RUSTUP_HOME`/`CARGO_HOME` + `--no-modify-path` — never

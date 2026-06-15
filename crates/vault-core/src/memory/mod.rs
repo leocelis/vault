@@ -17,23 +17,77 @@ pub type DataKey = Secret<[u8; 32]>;
 /// A transient buffer of decrypted plaintext that zeroes on drop (constraint C11).
 pub type SecretBuffer = Zeroizing<Vec<u8>>;
 
-/// Lock a region of memory so it cannot be swapped to disk (constraint C12).
+use subtle::ConstantTimeEq;
+
+/// Locks a byte buffer's pages into RAM for its lifetime, keeping secrets off swap (constraint C12).
 ///
-/// Degrades gracefully: if `mlock`/`VirtualLock` is unavailable (e.g. an unprivileged container),
-/// logs a warning to stderr and continues — it must never abort the process (constraint C12).
-pub fn lock_pages(/* region */) {
-    unimplemented!("M4: mlock with graceful degradation (constraint C12)")
+/// Unlocks on drop. Borrows the buffer so it cannot outlive it; the buffer must not be reallocated
+/// (e.g. a `Vec` grown) while locked. Degrades gracefully — if `mlock` fails (unprivileged
+/// container, `RLIMIT_MEMLOCK`), [`PageLock::is_locked`] is `false` and the program continues
+/// (constraint C12: never abort). All `unsafe` is isolated in the `vault-sys` FFI crate.
+#[derive(Debug)]
+pub struct PageLock<'a> {
+    buf: &'a [u8],
+    locked: bool,
+}
+
+impl<'a> PageLock<'a> {
+    /// Attempt to lock the pages backing `buf`.
+    pub fn new(buf: &'a [u8]) -> Self {
+        let locked = vault_sys::lock_region(buf.as_ptr(), buf.len());
+        PageLock { buf, locked }
+    }
+
+    /// Whether the pages were actually locked (false = graceful degradation).
+    pub fn is_locked(&self) -> bool {
+        self.locked
+    }
+}
+
+impl Drop for PageLock<'_> {
+    fn drop(&mut self) {
+        if self.locked {
+            vault_sys::unlock_region(self.buf.as_ptr(), self.buf.len());
+        }
+    }
 }
 
 /// Constant-time equality for secret byte slices (constraint C25).
 ///
 /// Uses `subtle::ConstantTimeEq`. Using `==` on secret bytes is forbidden — it leaks timing.
-pub fn ct_eq(_a: &[u8], _b: &[u8]) -> bool {
-    unimplemented!("M4: constant-time comparison via subtle (constraint C25)")
+pub fn ct_eq(a: &[u8], b: &[u8]) -> bool {
+    a.ct_eq(b).into()
 }
 
-/// Process-wide runtime hardening applied at startup (constraint C25 + coverage-gaps B3):
-/// disable core dumps (`setrlimit(RLIMIT_CORE, 0)`) and block ptrace (`PR_SET_DUMPABLE, 0`).
+/// Process-wide runtime hardening applied at startup (constraint C25): disable core dumps
+/// (`setrlimit(RLIMIT_CORE, 0)`, plus `PR_SET_DUMPABLE, 0` on Linux). Best-effort: on failure it
+/// prints a one-line warning to stderr and continues (C25 must not abort). Call once from `main`.
 pub fn harden_process() {
-    unimplemented!("M4: core-dump off + anti-ptrace (constraint C25, gap B3)")
+    if !vault_sys::disable_core_dumps() {
+        eprintln!(
+            "vault: warning — could not disable core dumps; a crash could leave secrets in a core file"
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn constant_time_eq_matches_value_equality() {
+        assert!(ct_eq(b"hunter2", b"hunter2"));
+        assert!(!ct_eq(b"hunter2", b"hunter3"));
+        assert!(!ct_eq(b"short", b"longer"));
+        assert!(ct_eq(b"", b""));
+    }
+
+    #[test]
+    fn page_lock_is_graceful() {
+        let buf = vec![0u8; 4096];
+        let lock = PageLock::new(&buf);
+        // is_locked may be true or false depending on the environment; must not panic, and unlock
+        // happens cleanly on drop.
+        let _ = lock.is_locked();
+    }
 }

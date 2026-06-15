@@ -1110,6 +1110,7 @@ dependencies = [
  "subtle",
  "thiserror",
  "unicode-normalization",
+ "vault-sys",
  "zeroize",
 ]
 
@@ -1118,6 +1119,13 @@ name = "vault-hardware"
 version = "0.0.0"
 dependencies = [
  "vault-core",
+]
+
+[[package]]
+name = "vault-sys"
+version = "0.0.0"
+dependencies = [
+ "libc",
 ]
 
 [[package]]

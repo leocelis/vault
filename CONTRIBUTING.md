@@ -23,7 +23,8 @@ for the remaining candidate areas (C35+, "Part 2") we already know we want.
 
 - **No custom cryptography.** Use the approved audited libraries (libsodium / RustCrypto). If you
   think you need a new primitive, you don't — open an issue.
-- **No `unsafe`** outside the designated, reviewed crypto-FFI module.
+- **No `unsafe`** outside the one designated FFI crate, [`vault-sys`](crates/vault-sys/) (OS calls
+  for `mlock`/`setrlimit`). Every other crate is `#![forbid(unsafe_code)]`.
 - **No secrets in `Vec<u8>`/`String`.** Use the `Secret`/`Zeroizing` wrappers (constraint C11).
 - **No `==` on secret bytes.** Use constant-time comparison (`subtle`, constraint C25).
 - **Never log, print, or serialize secret material.** Not even in `Debug`.

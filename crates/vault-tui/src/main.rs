@@ -44,6 +44,7 @@ fn main() -> std::process::ExitCode {
 }
 
 fn real_main() -> Result<(), String> {
+    vault_core::memory::harden_process(); // C25: disable core dumps before touching secrets
     let cli = Cli::parse();
     let path = vault_path(cli.vault)?;
     let bytes = std::fs::read(&path)

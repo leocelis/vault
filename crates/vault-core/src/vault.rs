@@ -133,6 +133,8 @@ impl Vault {
         let stream_ct = block_stream::read(data_key.expose_secret(), &header.master_seed, body)?;
         let plaintext =
             stream::decrypt(data_key.expose_secret(), &header.nonce_prefix, &stream_ct)?;
+        // Lock the decrypted payload's pages off swap while it is in plaintext (C12).
+        let _payload_lock = crate::memory::PageLock::new(&plaintext);
         let payload = Payload::parse(&plaintext)?;
 
         Ok(Vault {
@@ -157,6 +159,8 @@ impl Vault {
         self.payload.vault_version += 1;
 
         let plaintext = Zeroizing::new(self.payload.serialize());
+        // Lock the serialized plaintext's pages off swap while it exists (C12).
+        let _payload_lock = crate::memory::PageLock::new(&plaintext);
         let stream_ct = stream::encrypt(
             self.data_key.expose_secret(),
             &self.header.nonce_prefix,

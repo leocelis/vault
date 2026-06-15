@@ -92,6 +92,7 @@ enum Command {
 }
 
 fn main() -> std::process::ExitCode {
+    vault_core::memory::harden_process(); // C25: disable core dumps before touching secrets
     let cli = Cli::parse();
     match commands::dispatch(cli.vault, cli.command) {
         Ok(()) => std::process::ExitCode::SUCCESS,

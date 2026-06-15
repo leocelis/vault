@@ -7,6 +7,7 @@ members = [
     "crates/vault-core",
     "crates/vault-cli",
     "crates/vault-tui",
+    "crates/vault-sys",
     "crates/vault-hardware",
 ]
 
@@ -35,6 +36,8 @@ unicode-normalization = "0.1"   # C2  NFC password normalization (cross-platform
 # --- Memory hardening ---
 zeroize          = { version = "1", features = ["derive"] }   # C11
 secrecy          = "0.8"        # C11 secret wrappers
+# --- OS hardening FFI (the only place `unsafe` lives — vault-sys) ---
+libc             = "0.2"        # C12/C25 mlock + setrlimit (unix)
 # --- CLI / support ---
 clap             = { version = "4", features = ["derive"] }   # C21 CLI
 rpassword        = "7"          # C29 no-echo password prompt (no secrets on argv)
