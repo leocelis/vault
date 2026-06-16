@@ -132,6 +132,8 @@ struct VaultApp {
     pw_input: String,
     pw_confirm: String,
     focus_password: bool,
+    /// Tick to create despite a weak master password (the create-screen gate).
+    allow_weak_create: bool,
 
     // main screen
     query: String,
@@ -165,6 +167,7 @@ impl VaultApp {
             pw_input: String::new(),
             pw_confirm: String::new(),
             focus_password: true,
+            allow_weak_create: false,
             query: String::new(),
             selected: None,
             reveal: false,
@@ -275,6 +278,17 @@ impl VaultApp {
             self.error = Some("Passwords do not match.".into());
             return;
         }
+        // Root-of-trust gate: refuse a weak master password unless explicitly overridden.
+        if !self.allow_weak_create {
+            let bits = vault_core::audit::password_entropy_bits(self.pw_input.as_bytes());
+            if bits < vault_core::audit::WEAK_MASTER_BITS {
+                self.error = Some(format!(
+                    "Weak master password (~{bits:.0} bits) — tick “Create anyway” below, or use a \
+                     passphrase. It protects everything and faces offline cracking."
+                ));
+                return;
+            }
+        }
         // Argon2id at the recommended cost runs briefly on this thread (one-time).
         let mut v = match Vault::create_default(self.pw_input.as_bytes()) {
             Ok(v) => v,
@@ -313,6 +327,7 @@ impl VaultApp {
         self.import_review = None;
         self.rollback_warning = None;
         self.audit_report = None;
+        self.allow_weak_create = false;
         self.error = None;
         self.status.clear();
         self.focus_password = true;
@@ -632,6 +647,12 @@ impl VaultApp {
                     let (bits, label, color) = strength_meter(&self.pw_input);
                     ui.add_space(4.0);
                     ui.colored_label(color, format!("Strength: ~{bits:.0} bits ({label})"));
+                    if bits < vault_core::audit::WEAK_MASTER_BITS {
+                        ui.checkbox(
+                            &mut self.allow_weak_create,
+                            "⚠ Create anyway (weak password)",
+                        );
+                    }
                 }
 
                 if creating {
