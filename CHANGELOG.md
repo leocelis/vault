@@ -152,6 +152,12 @@ All notable changes to this project are documented here. The format is based on
   timer) and a "2FA secret" field in the editor. Adds the audited `sha1` crate (used **only** for
   TOTP, never at rest). Also made the CLI master-password prompt read a single line so `add`/`edit`
   are scriptable. 5 new tests.
+- **Password-health audit (`vault audit` + GUI 🩺).** New offline [`audit`](crates/vault-core/src/audit.rs)
+  flags **weak** (low-entropy), **reused** (same password across entries), **stale** (not changed in
+  over a year), and **expiring/expired** credentials — entirely locally (no network, C23), reporting
+  entries **by title only, never by secret**. Reuse detection groups by a **salted, per-call,
+  transient** SHA-256 (so the digests aren't a plain hash of the password). `vault audit` prints the
+  report; the desktop app adds a **🩺 Audit** button with a results panel. 3 new tests.
 - **YubiKey 2FA — hardware second factor (UC-09, CLI).** `vault enroll yubikey` turns the master
   password into a **required-both** second factor: the data key is re-wrapped under
   `HKDF(Argon2id(password) ‖ YubiKey-HMAC-SHA1-response)` in a composite `PW_YUBIKEY` stanza, so the

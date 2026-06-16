@@ -64,6 +64,8 @@ enum Command {
         #[arg(long)]
         search: Option<String>,
     },
+    /// Offline health check — report weak, reused, stale, and expiring passwords (by title only).
+    Audit,
     /// Generate the current 2FA (TOTP) code for an entry — to the clipboard by default.
     Otp {
         name: String,

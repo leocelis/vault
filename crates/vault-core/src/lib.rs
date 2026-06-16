@@ -23,6 +23,7 @@
 // Scaffold phase: stubs intentionally carry unfinished items.
 #![allow(dead_code)]
 
+pub mod audit; // health    weak / reused / stale / expiring report (offline)
 pub mod crypto; // C1–C3   cipher, KDF, primitives
 pub mod envelope; // C4–C6   data key + multi-stanza envelope
 pub mod format; // C7–C10  on-disk format + integrity

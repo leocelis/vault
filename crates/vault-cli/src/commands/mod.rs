@@ -40,6 +40,7 @@ pub fn dispatch(vault_opt: Option<PathBuf>, opts: &OpenOpts, command: Command) -
             cmd_import(&vault_path(vault_opt)?, &format, &source, opts)
         }
         Command::Ls { search } => cmd_ls(&vault_path(vault_opt)?, search.as_deref(), opts),
+        Command::Audit => cmd_audit(&vault_path(vault_opt)?, opts),
         Command::Get {
             name,
             field,
@@ -168,6 +169,50 @@ fn cmd_ls(path: &Path, search: Option<&str>, opts: &OpenOpts) -> CmdResult {
     for e in entries {
         // Titles are user/import-controlled → sanitize before the terminal (C30).
         println!("{}", sanitize(&e.title));
+    }
+    Ok(())
+}
+
+fn cmd_audit(path: &Path, opts: &OpenOpts) -> CmdResult {
+    use vault_core::audit::{analyze, AuditConfig};
+    let password = prompt_password(false)?;
+    let vault = open_vault(path, password.as_bytes(), opts)?;
+    let report = analyze(vault.entries(), now_unix(), &AuditConfig::default());
+
+    println!("Audited {} entries.", report.total);
+    if report.is_clean() {
+        println!("✅ No issues found.");
+        return Ok(());
+    }
+    if !report.weak.is_empty() {
+        println!("\n⚠ Weak passwords ({}):", report.weak.len());
+        for t in &report.weak {
+            println!("  {}", sanitize(t));
+        }
+    }
+    if !report.reused.is_empty() {
+        println!("\n⚠ Reused passwords ({} group(s)):", report.reused.len());
+        for group in &report.reused {
+            let titles: Vec<String> = group.iter().map(|t| sanitize(t)).collect();
+            println!("  {}", titles.join(", "));
+        }
+    }
+    if !report.stale.is_empty() {
+        println!("\n⚠ Not changed in over a year ({}):", report.stale.len());
+        for t in &report.stale {
+            println!("  {}", sanitize(t));
+        }
+    }
+    if !report.expiring.is_empty() {
+        println!("\n⚠ Expiring/expired ({}):", report.expiring.len());
+        for (t, days) in &report.expiring {
+            let when = if *days < 0 {
+                format!("expired {}d ago", -days)
+            } else {
+                format!("in {days}d")
+            };
+            println!("  {} ({when})", sanitize(t));
+        }
     }
     Ok(())
 }

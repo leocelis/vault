@@ -119,6 +119,7 @@ enum Action {
     Edit(usize),
     SetPadding(bool),
     SetAutoLock(u64),
+    Audit,
 }
 
 struct VaultApp {
@@ -143,6 +144,8 @@ struct VaultApp {
     import_review: Option<ImportReview>,
     /// A pending rollback warning (C16) shown as a modal dialog after unlock.
     rollback_warning: Option<String>,
+    /// The latest password-health audit, shown as a modal when present.
+    audit_report: Option<vault_core::audit::AuditReport>,
 
     status: String,
     error: Option<String>,
@@ -169,6 +172,7 @@ impl VaultApp {
             editor: None,
             import_review: None,
             rollback_warning: None,
+            audit_report: None,
             status: String::new(),
             error: None,
             auto_lock_secs: load_auto_lock_secs(),
@@ -308,6 +312,7 @@ impl VaultApp {
         self.editor = None;
         self.import_review = None;
         self.rollback_warning = None;
+        self.audit_report = None;
         self.error = None;
         self.status.clear();
         self.focus_password = true;
@@ -756,6 +761,9 @@ impl VaultApp {
                     {
                         action = Some(Action::SetPadding(pad_on));
                     }
+                    if ui.button("🩺 Audit").clicked() {
+                        action = Some(Action::Audit);
+                    }
                     if ui.button("Import keys.txt").clicked() {
                         action = Some(Action::ChooseImport);
                     }
@@ -947,6 +955,15 @@ impl VaultApp {
                     self.last_activity = Instant::now();
                     save_auto_lock_secs(secs);
                     self.status = format!("Auto-lock set to {}.", auto_lock_label(secs));
+                }
+                Action::Audit => {
+                    if let Some(v) = self.vault.as_ref() {
+                        self.audit_report = Some(vault_core::audit::analyze(
+                            v.entries(),
+                            now_unix(),
+                            &vault_core::audit::AuditConfig::default(),
+                        ));
+                    }
                 }
             }
         }
@@ -1169,6 +1186,83 @@ impl VaultApp {
         }
     }
 
+    /// The password-health audit results, shown as a dismissable panel.
+    fn audit_modal(&mut self, ctx: &egui::Context) {
+        let Some(report) = self.audit_report.as_ref() else {
+            return;
+        };
+        let mut close = false;
+        egui::Window::new("🩺 Password health")
+            .order(egui::Order::Foreground)
+            .collapsible(false)
+            .resizable(true)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .default_width(440.0)
+            .show(ctx, |ui| {
+                ui.label(format!("Audited {} entries.", report.total));
+                if report.is_clean() {
+                    ui.add_space(6.0);
+                    ui.colored_label(egui::Color32::from_rgb(90, 190, 110), "✅ No issues found.");
+                } else {
+                    egui::ScrollArea::vertical()
+                        .max_height(360.0)
+                        .show(ui, |ui| {
+                            if !report.weak.is_empty() {
+                                ui.add_space(6.0);
+                                ui.strong(format!("⚠ Weak passwords ({})", report.weak.len()));
+                                for t in &report.weak {
+                                    ui.label(format!("• {}", one_line(t)));
+                                }
+                            }
+                            if !report.reused.is_empty() {
+                                ui.add_space(6.0);
+                                ui.strong(format!(
+                                    "⚠ Reused passwords ({} group(s))",
+                                    report.reused.len()
+                                ));
+                                for g in &report.reused {
+                                    let titles: Vec<String> =
+                                        g.iter().map(|t| one_line(t)).collect();
+                                    ui.label(format!("• {}", titles.join(", ")));
+                                }
+                            }
+                            if !report.stale.is_empty() {
+                                ui.add_space(6.0);
+                                ui.strong(format!(
+                                    "⚠ Not changed in over a year ({})",
+                                    report.stale.len()
+                                ));
+                                for t in &report.stale {
+                                    ui.label(format!("• {}", one_line(t)));
+                                }
+                            }
+                            if !report.expiring.is_empty() {
+                                ui.add_space(6.0);
+                                ui.strong(format!(
+                                    "⚠ Expiring/expired ({})",
+                                    report.expiring.len()
+                                ));
+                                for (t, d) in &report.expiring {
+                                    let when = if *d < 0 {
+                                        format!("expired {}d ago", -d)
+                                    } else {
+                                        format!("in {d}d")
+                                    };
+                                    ui.label(format!("• {} ({when})", one_line(t)));
+                                }
+                            }
+                        });
+                }
+                ui.separator();
+                if ui.button("Close").clicked() {
+                    close = true;
+                }
+            });
+        if close {
+            self.audit_report = None;
+        }
+    }
+
     /// A blocking modal shown after unlock when the local anchor indicates a rollback (C16).
     fn rollback_modal(&mut self, ctx: &egui::Context) {
         let Some(msg) = self.rollback_warning.clone() else {
@@ -1234,6 +1328,7 @@ impl eframe::App for VaultApp {
             self.editor_window(ctx);
             self.import_window(ctx);
             self.rollback_modal(ctx);
+            self.audit_modal(ctx);
         } else {
             self.locked_screen(ctx);
         }
