@@ -156,8 +156,19 @@ All notable changes to this project are documented here. The format is based on
   other layer (it faces offline brute force), so `vault init` now **estimates its strength** and, if
   it's below ~60 bits (`audit::WEAK_MASTER_BITS`), warns loudly and — on a terminal — requires
   confirmation; `--allow-weak-password` skips it for scripted setup (non-interactive init warns but
-  proceeds). The desktop create screen already shows a live strength meter. Shared estimator
+  proceeds). The **desktop create screen** enforces the same gate: a weak password is refused unless
+  you tick **"⚠ Create anyway"** below the live strength meter. Shared estimator
   (`audit::password_entropy_bits`) keeps CLI and GUI consistent.
+- **Reproducible-build verification (C24/C34).** [`scripts/reproducible-build.sh`](scripts/reproducible-build.sh)
+  builds the `vault` CLI binary **twice with deterministic flags** (`SOURCE_DATE_EPOCH`,
+  `--remap-path-prefix`, `CARGO_INCREMENTAL=0`, `--locked`; the release profile already pins
+  `codegen-units=1` + `strip`) and asserts the two are **byte-for-byte identical** — so anyone can
+  rebuild from source and confirm a published binary matches it (defeating a tampered-binary
+  supply-chain attack). Verified reproducible locally; a CI job enforces it on every push.
+- **`unsafe`-isolation CI guard (C25).** [`scripts/check-unsafe-isolation.sh`](scripts/check-unsafe-isolation.sh)
+  (+ a CI job) asserts that **only `vault-sys` contains `unsafe`** and every other crate declares
+  `#![forbid(unsafe_code)]` — belt-and-braces that pins the attribute in place so it can't be
+  silently removed.
 - **Hostile-file robustness hardening (UC-10 / C30).** A malicious `.vlt` from an untrusted sync
   backend is the #1 untrusted-input path, so the guarantee that *parsing it can't be exploited* is
   now property-tested in the normal suite ([`tests/robustness.rs`](crates/vault-core/tests/robustness.rs)):

@@ -27,6 +27,14 @@ jobs:
         run: rustup toolchain install
       - run: cargo fmt --all -- --check
 
+  unsafe-isolation:
+    name: unsafe isolation (only vault-sys)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - name: Assert `unsafe` lives only in vault-sys, and every other crate forbids it (C25)
+        run: ./scripts/check-unsafe-isolation.sh
+
   clippy:
     name: clippy
     runs-on: ubuntu-latest
@@ -83,3 +91,14 @@ jobs:
           file target/x86_64-unknown-linux-musl/release/vault || true
           ldd  target/x86_64-unknown-linux-musl/release/vault 2>&1 | grep -q "not a dynamic executable" \
             && echo "OK: static binary" || echo "NOTE: enable once the binary exists"
+
+  # Build the CLI binary twice with deterministic flags and assert byte-for-byte identity, so a
+  # published release can be verified against source (constraints C24/C34).
+  reproducible:
+    name: reproducible build (constraints C24/C34)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - name: Install pinned toolchain (rust-toolchain.toml — C34 reproducibility)
+        run: rustup toolchain install
+      - run: ./scripts/reproducible-build.sh
