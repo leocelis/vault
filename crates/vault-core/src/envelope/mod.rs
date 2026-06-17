@@ -22,6 +22,8 @@ use crate::{Error, Result};
 const PW_WRAP_INFO: &[u8] = b"vault-pw-wrap-v1";
 /// HKDF info label for the composite password+YubiKey 2FA wrapping key (UC-09 AND model).
 const TWOFA_WRAP_INFO: &[u8] = b"vault-2fa-wrap-v1";
+/// HKDF info label for the composite password+keyfile 2FA wrapping key (domain-separated).
+const KEYFILE_WRAP_INFO: &[u8] = b"vault-keyfile-wrap-v1";
 /// XChaCha20-Poly1305 nonce length (constraint C5 stanza layout).
 const WRAP_NONCE_LEN: usize = 24;
 /// Wrapped data-key length: 32-byte key + 16-byte Poly1305 tag (constraint C5).
@@ -145,22 +147,25 @@ pub fn unwrap_password_stanza(
 
 // ─── composite password + YubiKey 2FA stanza (UC-09 AND model) ──────────────────────────────────
 
-/// Derive the 2FA wrapping key from **both** factors: `HKDF(ikm = Argon2id(pw) ‖ hw_response,
-/// salt = vault_id, info = "vault-2fa-wrap-v1")`. Neither factor alone yields the key.
-fn twofa_wrapping_key(
+/// Derive a composite-2FA wrapping key from **both** factors: `HKDF(ikm = Argon2id(pw) ‖ factor,
+/// salt = vault_id, info)`. `factor` is the second factor's bytes (a YubiKey HMAC response or a
+/// keyfile hash) and `info` domain-separates the factor type. Neither factor alone yields the key.
+#[allow(clippy::too_many_arguments)]
+fn composite_wrapping_key(
     password: &[u8],
-    hw_response: &[u8],
+    factor: &[u8],
     salt: &[u8; 32],
     vault_id: &[u8; 16],
     m_cost: u32,
     t_cost: u32,
     p_cost: u32,
+    info: &[u8],
 ) -> Result<[u8; 32]> {
     let pw_ikm = kdf::argon2id(password, salt, m_cost, t_cost, p_cost)?;
-    let mut ikm = Zeroizing::new(Vec::with_capacity(32 + hw_response.len()));
+    let mut ikm = Zeroizing::new(Vec::with_capacity(32 + factor.len()));
     ikm.extend_from_slice(pw_ikm.expose_secret());
-    ikm.extend_from_slice(hw_response);
-    Ok(crypto::hkdf32(&ikm, vault_id, TWOFA_WRAP_INFO))
+    ikm.extend_from_slice(factor);
+    Ok(crypto::hkdf32(&ikm, vault_id, info))
 }
 
 /// Wrap `data_key` in a composite **password + YubiKey** 2FA stanza (`kind::PW_YUBIKEY`).
@@ -179,7 +184,7 @@ pub fn wrap_yubikey_2fa_stanza(
     t_cost: u32,
     p_cost: u32,
 ) -> Result<Stanza> {
-    let mut wrapping_key = twofa_wrapping_key(
+    let mut wrapping_key = composite_wrapping_key(
         password,
         hw_response,
         salt,
@@ -187,6 +192,7 @@ pub fn wrap_yubikey_2fa_stanza(
         m_cost,
         t_cost,
         p_cost,
+        TWOFA_WRAP_INFO,
     )?;
     let cipher = XChaCha20Poly1305::new_from_slice(&wrapping_key).map_err(|_| Error::Crypto)?;
     wrapping_key.zeroize();
@@ -240,7 +246,7 @@ pub fn unwrap_yubikey_2fa_stanza(
     let wrapped = &stanza.data
         [CHALLENGE_LEN + WRAP_NONCE_LEN..CHALLENGE_LEN + WRAP_NONCE_LEN + WRAPPED_KEY_LEN];
 
-    let mut wrapping_key = twofa_wrapping_key(
+    let mut wrapping_key = composite_wrapping_key(
         password,
         hw_response,
         salt,
@@ -248,6 +254,109 @@ pub fn unwrap_yubikey_2fa_stanza(
         m_cost,
         t_cost,
         p_cost,
+        TWOFA_WRAP_INFO,
+    )?;
+    let cipher = XChaCha20Poly1305::new_from_slice(&wrapping_key).map_err(|_| Error::Crypto)?;
+    wrapping_key.zeroize();
+
+    let plaintext = Zeroizing::new(
+        cipher
+            .decrypt(XNonce::from_slice(nonce), wrapped)
+            .map_err(|_| Error::HeaderAuth)?,
+    );
+    if plaintext.len() != 32 {
+        return Err(Error::HeaderAuth);
+    }
+    let mut key = [0u8; 32];
+    key.copy_from_slice(&plaintext);
+    let secret = Secret::new(key);
+    key.zeroize();
+    Ok(secret)
+}
+
+// ─── composite password + keyfile 2FA stanza (no hardware needed) ─────────────────────────────────
+
+/// The 32-byte keyfile factor: SHA-256 of the keyfile's contents (any file works; random bytes are
+/// strongest). A keyfile you keep on a separate device is a second factor without any hardware.
+fn keyfile_factor(keyfile: &[u8]) -> [u8; 32] {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(keyfile);
+    h.finalize().into()
+}
+
+/// Wrap `data_key` in a composite **password + keyfile** 2FA stanza (`kind::PW_KEYFILE`). Both the
+/// password and the exact keyfile are required to unwrap. Layout: `wrap_nonce[24] || wrapped[48]`.
+pub fn wrap_keyfile_2fa_stanza(
+    data_key: &[u8; 32],
+    password: &[u8],
+    keyfile: &[u8],
+    salt: &[u8; 32],
+    vault_id: &[u8; 16],
+    m_cost: u32,
+    t_cost: u32,
+    p_cost: u32,
+) -> Result<Stanza> {
+    let factor = keyfile_factor(keyfile);
+    let mut wrapping_key = composite_wrapping_key(
+        password,
+        &factor,
+        salt,
+        vault_id,
+        m_cost,
+        t_cost,
+        p_cost,
+        KEYFILE_WRAP_INFO,
+    )?;
+    let cipher = XChaCha20Poly1305::new_from_slice(&wrapping_key).map_err(|_| Error::Crypto)?;
+    wrapping_key.zeroize();
+
+    let mut nonce = [0u8; WRAP_NONCE_LEN];
+    getrandom::getrandom(&mut nonce).map_err(|_| Error::Crypto)?;
+    let wrapped = cipher
+        .encrypt(XNonce::from_slice(&nonce), &data_key[..])
+        .map_err(|_| Error::Crypto)?;
+
+    let mut data = Vec::with_capacity(WRAP_NONCE_LEN + WRAPPED_KEY_LEN);
+    data.extend_from_slice(&nonce);
+    data.extend_from_slice(&wrapped);
+    Ok(Stanza {
+        stanza_type: kind::PW_KEYFILE,
+        data,
+    })
+}
+
+/// Unwrap the data key from a composite password+keyfile stanza. A wrong password **or** wrong
+/// keyfile yields the ambiguous [`Error::HeaderAuth`] (no oracle).
+pub fn unwrap_keyfile_2fa_stanza(
+    stanza: &Stanza,
+    password: &[u8],
+    keyfile: &[u8],
+    salt: &[u8; 32],
+    vault_id: &[u8; 16],
+    m_cost: u32,
+    t_cost: u32,
+    p_cost: u32,
+) -> Result<DataKey> {
+    if stanza.stanza_type != kind::PW_KEYFILE {
+        return Err(Error::Crypto);
+    }
+    if stanza.data.len() < WRAP_NONCE_LEN + WRAPPED_KEY_LEN {
+        return Err(Error::HeaderAuth);
+    }
+    let (nonce, rest) = stanza.data.split_at(WRAP_NONCE_LEN);
+    let wrapped = &rest[..WRAPPED_KEY_LEN];
+
+    let factor = keyfile_factor(keyfile);
+    let mut wrapping_key = composite_wrapping_key(
+        password,
+        &factor,
+        salt,
+        vault_id,
+        m_cost,
+        t_cost,
+        p_cost,
+        KEYFILE_WRAP_INFO,
     )?;
     let cipher = XChaCha20Poly1305::new_from_slice(&wrapping_key).map_err(|_| Error::Crypto)?;
     wrapping_key.zeroize();
@@ -378,5 +487,30 @@ mod tests {
     fn twofa_challenge_rejects_wrong_kind() {
         let pw = wrap_password_stanza(&[0u8; 32], b"pw", &SALT, &VID, M, T, P).unwrap();
         assert!(yubikey_challenge(&pw).is_err());
+    }
+
+    // ── composite 2FA (password + keyfile) ──────────────────────────────────
+    #[test]
+    fn keyfile_2fa_round_trip_needs_both() {
+        let dk = [0xEF; 32];
+        let keyfile = b"keyfile-bytes-kept-on-a-separate-usb-stick";
+        let s = wrap_keyfile_2fa_stanza(&dk, b"pw", keyfile, &SALT, &VID, M, T, P).unwrap();
+        assert_eq!(s.stanza_type, kind::PW_KEYFILE);
+        assert_eq!(s.data.len(), WRAP_NONCE_LEN + WRAPPED_KEY_LEN);
+        assert!(s.data.windows(32).all(|w| w != dk));
+
+        // both correct → opens
+        let out = unwrap_keyfile_2fa_stanza(&s, b"pw", keyfile, &SALT, &VID, M, T, P).unwrap();
+        assert_eq!(out.expose_secret(), &dk);
+        // wrong password (keyfile correct) → fail
+        assert!(matches!(
+            unwrap_keyfile_2fa_stanza(&s, b"WRONG", keyfile, &SALT, &VID, M, T, P),
+            Err(Error::HeaderAuth)
+        ));
+        // wrong keyfile (password correct) → fail
+        assert!(matches!(
+            unwrap_keyfile_2fa_stanza(&s, b"pw", b"a-different-keyfile", &SALT, &VID, M, T, P),
+            Err(Error::HeaderAuth)
+        ));
     }
 }

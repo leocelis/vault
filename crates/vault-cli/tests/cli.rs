@@ -379,3 +379,83 @@ fn cli_rollback_detection() {
     let _ = std::fs::remove_file(&saved_v1);
     let _ = std::fs::remove_dir_all(&home);
 }
+
+/// Keyfile second factor (true 2FA, no hardware): enroll generates a keyfile, then the vault needs
+/// BOTH the password and the keyfile to open. `--recovery` is the anti-lockout path (UC-09).
+#[test]
+fn cli_keyfile_2fa_enroll_open_and_recovery() {
+    let home = std::env::temp_dir().join(format!("vault-kf-home-{}", std::process::id()));
+    std::fs::create_dir_all(&home).ok();
+    let vault = unique_vault();
+    let vs = vault.to_str().unwrap();
+    let keyfile = std::env::temp_dir().join(format!("vault-kf-{}.key", std::process::id()));
+    let kf = keyfile.to_str().unwrap();
+    let pw = "keyfile-master-pass-1\n";
+
+    let (code, _, err) = run_env(
+        &home,
+        &[
+            "--vault",
+            vs,
+            "init",
+            "--kdf-m-cost",
+            "8192",
+            "--kdf-t-cost",
+            "1",
+            "--kdf-p-cost",
+            "1",
+        ],
+        pw,
+    );
+    assert_eq!(code, Some(0), "init failed: {err}");
+
+    // Enroll the keyfile — the path doesn't exist yet, so a fresh random one is generated (0600).
+    let (code, _, err) = run_env(&home, &["--vault", vs, "enroll", "keyfile", kf], pw);
+    assert_eq!(code, Some(0), "enroll keyfile failed: {err}");
+    assert!(std::path::Path::new(kf).exists(), "keyfile should exist");
+    assert_eq!(std::fs::read(kf).unwrap().len(), 32, "keyfile is 32 bytes");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(kf).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "keyfile must be 0600");
+    }
+
+    // Pull the recovery code out of the enroll output (printed on its own indented line).
+    let recovery = err
+        .lines()
+        .map(str::trim)
+        .find(|l| l.len() >= 24 && l.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-'))
+        .expect("recovery code in enroll output")
+        .to_string();
+
+    // Password alone (no keyfile) → refused with a clear message.
+    let (code, _, err) = run_env(&home, &["--vault", vs, "ls"], pw);
+    assert_ne!(code, Some(0), "open without keyfile should fail");
+    assert!(err.contains("requires a keyfile"), "stderr: {err}");
+
+    // Password + the correct keyfile → opens.
+    let (code, out, err) = run_env(&home, &["--vault", vs, "--keyfile", kf, "ls"], pw);
+    assert_eq!(code, Some(0), "open with keyfile failed: {err}");
+    let _ = out;
+
+    // Password + a WRONG keyfile → refused (both factors must match).
+    let wrong = std::env::temp_dir().join(format!("vault-kf-wrong-{}.key", std::process::id()));
+    std::fs::write(&wrong, [0u8; 32]).unwrap();
+    let (code, _, _) = run_env(
+        &home,
+        &["--vault", vs, "--keyfile", wrong.to_str().unwrap(), "ls"],
+        pw,
+    );
+    assert_ne!(code, Some(0), "wrong keyfile must not open");
+
+    // Recovery path: `--recovery` with the recovery code (no keyfile) opens via the password path.
+    let recovery_stdin = format!("{recovery}\n");
+    let (code, _, err) = run_env(&home, &["--vault", vs, "--recovery", "ls"], &recovery_stdin);
+    assert_eq!(code, Some(0), "recovery open failed: {err}");
+
+    let _ = std::fs::remove_file(&vault);
+    let _ = std::fs::remove_file(&keyfile);
+    let _ = std::fs::remove_file(&wrong);
+    let _ = std::fs::remove_dir_all(&home);
+}

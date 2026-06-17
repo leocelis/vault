@@ -155,6 +155,21 @@ HKDF. Survives the user's password changes (DPAPI credential history); dies with
 profile/machine. CNG Platform Crypto (TPM-backed, `MS_PLATFORM_CRYPTO_PROVIDER`) is the stronger
 sibling — deferred (§7).
 
+**Keyfile — composite AND factor (type 8 `PW_KEYFILE` · `info="vault-keyfile-wrap-v1"`).**
+The one **software** second factor, and the only one in this spec that is *required-both* rather
+than an OR alternative. The data key is wrapped under
+`HKDF(Argon2id(password) ‖ SHA-256(keyfile), salt=vault_id, info)`, so both the password **and** the
+keyfile bytes are needed — neither alone unlocks. `data = wrap_nonce[24] || wrapped_key[48]` (no
+`extra`; the keyfile lives off-vault, supplied at unlock via `--keyfile <PATH>`). Enrollment mirrors
+the YubiKey AND-path: it replaces the lone password stanza with `[PW_KEYFILE, recovery-PASSWORD]`,
+printing a one-time recovery code (anti-lockout, §3.5/C14–C15). `vault enroll keyfile <PATH>`
+generates a fresh 32-byte CSPRNG keyfile at `<PATH>` (mode `0600`) when the file is absent, else
+adopts the existing file's bytes. Unlike the OR factors, no `master_seed` re-wrap is needed at save
+time (the keyfile is stable), so there is no device-absent staleness case — only password+keyfile,
+or the recovery code. This shares the composite-stanza machinery with `PW_YUBIKEY`, so it is fully
+testable **without hardware**. *(The AND-model C5/C6 reconciliation — composite vs. OR envelope —
+is tracked as a pending intent amendment alongside `PW_YUBIKEY`.)*
+
 ### 3.4 Unlock priority and fallback
 
 Try cheap/silent factors first, loud ones with consent, password last:

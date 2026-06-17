@@ -26,6 +26,8 @@ pub struct OpenOpts {
     pub expect_min_version: Option<u64>,
     /// Unlock a YubiKey-2FA vault with its recovery code instead of the key (UC-09 anti-lockout).
     pub recovery: bool,
+    /// Keyfile path supplied as the second factor for a keyfile-2FA vault.
+    pub keyfile: Option<PathBuf>,
 }
 
 /// Route a parsed command to its handler.
@@ -85,7 +87,9 @@ pub fn dispatch(vault_opt: Option<PathBuf>, opts: &OpenOpts, command: Command) -
         ),
         Command::Pad { state } => cmd_pad(&vault_path(vault_opt)?, &state, opts),
         Command::Tune => cmd_tune(),
-        Command::Enroll { factor } => cmd_enroll(&vault_path(vault_opt)?, &factor, opts),
+        Command::Enroll { factor, path } => {
+            cmd_enroll(&vault_path(vault_opt)?, &factor, path.as_deref(), opts)
+        }
         Command::Lock => Err("that command is not implemented yet".to_string()),
     }
 }
@@ -560,13 +564,85 @@ fn cmd_tune() -> CmdResult {
     Ok(())
 }
 
-fn cmd_enroll(path: &Path, factor: &str, opts: &OpenOpts) -> CmdResult {
+fn cmd_enroll(path: &Path, factor: &str, enroll_path: Option<&Path>, opts: &OpenOpts) -> CmdResult {
     match factor.to_lowercase().as_str() {
         "yubikey" | "yk" => cmd_enroll_yubikey(path, opts),
+        "keyfile" | "kf" => cmd_enroll_keyfile(path, enroll_path, opts),
         other => Err(format!(
-            "unknown factor {other:?} (currently supported: yubikey)"
+            "unknown factor {other:?} (supported: yubikey, keyfile)"
         )),
     }
+}
+
+fn cmd_enroll_keyfile(path: &Path, keyfile_path: Option<&Path>, opts: &OpenOpts) -> CmdResult {
+    let kf_path = keyfile_path
+        .ok_or("usage: vault enroll keyfile <PATH>  (the keyfile to use or create)".to_string())?;
+
+    // Read an existing keyfile, or generate a fresh random 32-byte one at the path (0600).
+    let keyfile: Zeroizing<Vec<u8>> = if kf_path.exists() {
+        Zeroizing::new(std::fs::read(kf_path).map_err(|e| e.to_string())?)
+    } else {
+        let mut bytes = [0u8; 32];
+        getrandom::getrandom(&mut bytes).map_err(|e| e.to_string())?;
+        write_keyfile(kf_path, &bytes)?;
+        eprintln!("Generated a new keyfile at {}.", kf_path.display());
+        Zeroizing::new(bytes.to_vec())
+    };
+    if keyfile.is_empty() {
+        return Err("keyfile is empty".to_string());
+    }
+
+    let password = prompt_password(false)?;
+    let mut vault = open_vault(path, password.as_bytes(), opts)?;
+    if vault.is_2fa() {
+        return Err("this vault already has a second factor enrolled".to_string());
+    }
+
+    let recovery = recovery_code()?;
+    vault
+        .enroll_keyfile_2fa(password.as_bytes(), &keyfile, recovery.as_bytes())
+        .map_err(|e| e.to_string())?;
+    let out = vault.save().map_err(|e| e.to_string())?;
+    write_vault(path, &out)?;
+    note_saved(&vault);
+
+    eprintln!(
+        "\n✅ Keyfile enrolled — this vault now requires the master password AND {}.\n",
+        kf_path.display()
+    );
+    eprintln!(
+        "   Keep that keyfile on a SEPARATE device (e.g. a USB stick), not next to the vault."
+    );
+    eprintln!(
+        "   Unlock with:  vault --keyfile {} <command>\n",
+        kf_path.display()
+    );
+    eprintln!(
+        "   RECOVERY CODE — store it OFFLINE; it unlocks WITHOUT the keyfile if it's lost:\n"
+    );
+    eprintln!("       {recovery}\n");
+    eprintln!("   Unlock with it using:  vault --recovery <command>");
+    Ok(())
+}
+
+/// Write a keyfile atomically with 0600 perms (mirrors `write_vault`).
+fn write_keyfile(path: &Path, bytes: &[u8]) -> CmdResult {
+    if let Some(dir) = path.parent() {
+        if !dir.as_os_str().is_empty() {
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        }
+    }
+    let mut oo = std::fs::OpenOptions::new();
+    oo.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        oo.mode(0o600);
+    }
+    let mut f = oo.open(path).map_err(|e| e.to_string())?;
+    f.write_all(bytes).map_err(|e| e.to_string())?;
+    f.sync_all().ok();
+    Ok(())
 }
 
 fn cmd_enroll_yubikey(path: &Path, opts: &OpenOpts) -> CmdResult {
@@ -735,6 +811,19 @@ fn open_vault(path: &Path, password: &[u8], opts: &OpenOpts) -> Result<Vault, St
                 .map_err(vault_core::Error::Hardware)
         })
         .map_err(|e| e.to_string())?
+    } else if Vault::requires_keyfile(&bytes) && !opts.recovery {
+        // A keyfile-2FA vault needs both the password and the keyfile bytes — unless `--recovery`,
+        // which opens via the recovery code through the password path (UC-09 anti-lockout).
+        let kf_path = opts.keyfile.as_ref().ok_or_else(|| {
+            "this vault requires a keyfile — pass `--keyfile <PATH>` (or `--recovery` to use the \
+             recovery code)"
+                .to_string()
+        })?;
+        let kf = Zeroizing::new(
+            std::fs::read(kf_path)
+                .map_err(|e| format!("cannot read keyfile {}: {e}", kf_path.display()))?,
+        );
+        Vault::open_keyfile(&bytes, password, &kf).map_err(|e| e.to_string())?
     } else {
         Vault::open(&bytes, password).map_err(|e| e.to_string())?
     };

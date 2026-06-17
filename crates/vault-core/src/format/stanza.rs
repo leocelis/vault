@@ -28,6 +28,9 @@ pub mod kind {
     /// (true 2FA, unlike the single-factor OR stanzas above). `data` is
     /// `challenge[32] || wrap_nonce[24] || wrapped_key[48]`.
     pub const PW_YUBIKEY: u8 = 7;
+    /// **Composite** password **AND** keyfile stanza — both required (true 2FA, no hardware needed).
+    /// `data` is `wrap_nonce[24] || wrapped_key[48]`.
+    pub const PW_KEYFILE: u8 = 8;
 }
 
 /// One key-wrapping stanza record. `data` is opaque at this layer (interpreted by the envelope).

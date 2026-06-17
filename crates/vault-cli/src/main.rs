@@ -33,6 +33,9 @@ struct Cli {
     /// Unlock a YubiKey-2FA vault with its recovery code instead of the key (anti-lockout, UC-09).
     #[arg(long, global = true)]
     recovery: bool,
+    /// Keyfile to supply as the second factor when unlocking a keyfile-2FA vault.
+    #[arg(long, global = true, value_name = "PATH")]
+    keyfile: Option<PathBuf>,
     #[command(subcommand)]
     command: Command,
 }
@@ -123,10 +126,13 @@ enum Command {
     },
     /// Benchmark and recommend Argon2id parameters (constraint C22). *(not yet implemented)*
     Tune,
-    /// Add a hardware second factor — currently `vault enroll yubikey` (UC-09, true 2FA).
+    /// Add a required second factor (true 2FA): `vault enroll yubikey`, or
+    /// `vault enroll keyfile <PATH>` (a new keyfile is generated if PATH doesn't exist).
     Enroll {
-        /// Factor to enroll. Currently: `yubikey`.
+        /// Factor to enroll: `yubikey` or `keyfile`.
         factor: String,
+        /// Keyfile path (for `keyfile`): used if it exists, otherwise a random one is created here.
+        path: Option<PathBuf>,
     },
     /// Toggle payload size-padding so the file's exact size is hidden (UC-07 §3.2). `vault pad on|off`.
     Pad {
@@ -146,6 +152,7 @@ fn main() -> std::process::ExitCode {
         allow_rollback: cli.allow_rollback,
         expect_min_version: cli.expect_min_version,
         recovery: cli.recovery,
+        keyfile: cli.keyfile,
     };
     // A rollback abort exits with code 2 from inside the open path (constraint C16); a normal
     // failure returns Err and maps to 1.

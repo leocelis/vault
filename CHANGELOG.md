@@ -184,6 +184,17 @@ All notable changes to this project are documented here. The format is based on
   entries **by title only, never by secret**. Reuse detection groups by a **salted, per-call,
   transient** SHA-256 (so the digests aren't a plain hash of the password). `vault audit` prints the
   report; the desktop app adds a **🩺 Audit** button with a results panel. 3 new tests.
+- **Keyfile 2FA — hardware-free second factor (UC-09, CLI).** `vault enroll keyfile <PATH>` turns
+  the master password into a **required-both** second factor with no hardware: the data key is
+  re-wrapped under `HKDF(Argon2id(password) ‖ SHA-256(keyfile))` in a composite `PW_KEYFILE` stanza,
+  so the password **alone no longer unlocks** — the keyfile's bytes are needed too. Enrollment
+  generates a fresh 32-byte random keyfile at `<PATH>` (mode `0600`) if the file doesn't exist, or
+  adopts an existing file's bytes; unlock with `vault --keyfile <PATH> <cmd>`. Same anti-lockout as
+  the hardware path: a one-time **recovery code** opens via `vault --recovery <cmd>` if the keyfile is
+  lost. Keep the keyfile on a **separate device** (USB stick) from the vault — co-locating them
+  defeats the factor. Reuses the composite-stanza machinery, so it is **fully unit- and
+  integration-tested without any hardware** (the gap the YubiKey path leaves for CI). New
+  `Vault::open_keyfile` / `enroll_keyfile_2fa` / `requires_keyfile`; `--keyfile` global CLI flag.
 - **YubiKey 2FA — hardware second factor (UC-09, CLI).** `vault enroll yubikey` turns the master
   password into a **required-both** second factor: the data key is re-wrapped under
   `HKDF(Argon2id(password) ‖ YubiKey-HMAC-SHA1-response)` in a composite `PW_YUBIKEY` stanza, so the

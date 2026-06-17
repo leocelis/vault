@@ -21,7 +21,22 @@
 | `vault tune` | Benchmark and recommend Argon2id params for this machine. |
 | `vault merge OLD.vlt NEW.vlt` | Manually merge two conflicting vault versions. |
 | `vault stanzas list\|add TYPE\|remove TYPE` | Manage hardware/OS-keystore unlock stanzas (C5). |
+| `vault enroll yubikey` | Add a required **YubiKey** second factor (true 2FA); prints a recovery code. |
+| `vault enroll keyfile <PATH>` | Add a required **keyfile** second factor (no hardware); generates `<PATH>` if absent. |
 | `vault enroll-tpm` / `re-enroll-tpm` | Manage the optional TPM stanza. |
+
+## Second factors — true 2FA (UC-09)
+
+`vault enroll yubikey` and `vault enroll keyfile <PATH>` turn the master password into a
+**required-both** factor: the data key is re-wrapped under
+`HKDF(Argon2id(password) ‖ factor)`, so the password **alone no longer unlocks**. The factor is a
+YubiKey HMAC-SHA1 response (tap on unlock) or `SHA-256(keyfile)` (no hardware).
+
+- Unlock a keyfile vault: `vault --keyfile <PATH> <cmd>`. Keep the keyfile on a **separate device**
+  from the vault — co-locating them defeats the factor.
+- **Anti-lockout.** Enrollment prints a one-time high-entropy **recovery code**. If the key/keyfile
+  is lost, `vault --recovery <cmd>` unlocks via the recovery code (entered at the password prompt).
+- Only one second factor can be enrolled at a time.
 
 ## Secret-handling rules (why the CLI looks the way it does)
 

@@ -118,7 +118,7 @@ impl Vault {
     /// [`Error::HeaderTampered`]; body tampering fails with [`Error::BodyAuth`]. No plaintext is
     /// released before every layer's tag verifies.
     pub fn open(bytes: &[u8], password: &[u8]) -> Result<Vault> {
-        Self::open_inner(bytes, password, None)
+        Self::open_inner(bytes, password, None, None)
     }
 
     /// Open a vault that may be protected by a YubiKey second factor (UC-09 AND model).
@@ -132,12 +132,23 @@ impl Vault {
         password: &[u8],
         mut respond: impl FnMut(&[u8; 32]) -> Result<Zeroizing<Vec<u8>>>,
     ) -> Result<Vault> {
-        Self::open_inner(bytes, password, Some(&mut respond))
+        Self::open_inner(bytes, password, Some(&mut respond), None)
     }
 
-    fn open_inner(bytes: &[u8], password: &[u8], hw: Option<HwResponder<'_>>) -> Result<Vault> {
+    /// Open a vault protected by a **keyfile** second factor: both the password and the exact
+    /// keyfile bytes are required. A safe superset of [`Vault::open`] for non-keyfile vaults.
+    pub fn open_keyfile(bytes: &[u8], password: &[u8], keyfile: &[u8]) -> Result<Vault> {
+        Self::open_inner(bytes, password, None, Some(keyfile))
+    }
+
+    fn open_inner(
+        bytes: &[u8],
+        password: &[u8],
+        hw: Option<HwResponder<'_>>,
+        keyfile: Option<&[u8]>,
+    ) -> Result<Vault> {
         let header = Header::parse(bytes)?;
-        let data_key = Self::unwrap_data_key(&header, password, hw)?;
+        let data_key = Self::unwrap_data_key(&header, password, hw, keyfile)?;
 
         // C9 step 4: the factor is now proven valid, so a header HMAC mismatch is real tampering.
         header.verify_hmac(data_key.expose_secret())?;
@@ -164,6 +175,7 @@ impl Vault {
         header: &Header,
         password: &[u8],
         hw: Option<HwResponder<'_>>,
+        keyfile: Option<&[u8]>,
     ) -> Result<DataKey> {
         let (m, t, p) = (header.kdf.m_cost, header.kdf.t_cost, header.kdf.p_cost);
         if let Some(respond) = hw {
@@ -178,6 +190,24 @@ impl Vault {
                     s,
                     password,
                     &resp,
+                    &header.kdf.salt,
+                    &header.vault_id,
+                    m,
+                    t,
+                    p,
+                );
+            }
+        }
+        if let Some(kf) = keyfile {
+            if let Some(s) = header
+                .stanzas
+                .iter()
+                .find(|s| s.stanza_type == kind::PW_KEYFILE)
+            {
+                return envelope::unwrap_keyfile_2fa_stanza(
+                    s,
+                    password,
+                    kf,
                     &header.kdf.salt,
                     &header.vault_id,
                     m,
@@ -201,12 +231,19 @@ impl Vault {
             .unwrap_or(false)
     }
 
-    /// Whether this opened vault is protected by a YubiKey second factor.
+    /// Whether opening this serialized vault requires a keyfile second factor.
+    pub fn requires_keyfile(bytes: &[u8]) -> bool {
+        Header::parse(bytes)
+            .map(|h| h.stanzas.iter().any(|s| s.stanza_type == kind::PW_KEYFILE))
+            .unwrap_or(false)
+    }
+
+    /// Whether this opened vault is protected by any second factor (YubiKey or keyfile).
     pub fn is_2fa(&self) -> bool {
         self.header
             .stanzas
             .iter()
-            .any(|s| s.stanza_type == kind::PW_YUBIKEY)
+            .any(|s| matches!(s.stanza_type, kind::PW_YUBIKEY | kind::PW_KEYFILE))
     }
 
     /// Enroll a YubiKey as a **required** second factor (UC-09 AND model). Replaces the password
@@ -243,6 +280,29 @@ impl Vault {
         )?;
         let recovery = envelope::wrap_password_stanza(&dk, recovery_code, &salt, &vid, m, t, p)?;
         self.header.stanzas = vec![yubikey, recovery];
+        Ok(())
+    }
+
+    /// Enroll a **keyfile** as a required second factor. Replaces the password stanza with a
+    /// composite password+keyfile stanza plus a recovery-code stanza (anti-lockout). The caller MUST
+    /// `save()` afterward.
+    pub fn enroll_keyfile_2fa(
+        &mut self,
+        password: &[u8],
+        keyfile: &[u8],
+        recovery_code: &[u8],
+    ) -> Result<()> {
+        let salt = self.header.kdf.salt;
+        let vid = self.header.vault_id;
+        let (m, t, p) = (
+            self.header.kdf.m_cost,
+            self.header.kdf.t_cost,
+            self.header.kdf.p_cost,
+        );
+        let dk = Zeroizing::new(*self.data_key.expose_secret());
+        let kf = envelope::wrap_keyfile_2fa_stanza(&dk, password, keyfile, &salt, &vid, m, t, p)?;
+        let recovery = envelope::wrap_password_stanza(&dk, recovery_code, &salt, &vid, m, t, p)?;
+        self.header.stanzas = vec![kf, recovery];
         Ok(())
     }
 
@@ -604,6 +664,45 @@ mod tests {
             Err(Error::HeaderAuth)
         ));
         // recovery code (via the password path) → opens, for anti-lockout.
+        let rec = Vault::open(&bytes, recovery).unwrap();
+        assert_eq!(
+            rec.get("svc").unwrap().password.expose().as_slice(),
+            b"s3cr3t"
+        );
+    }
+
+    #[test]
+    fn keyfile_2fa_enroll_open_and_recovery() {
+        let keyfile = b"random-keyfile-bytes-kept-on-a-separate-usb-stick";
+        let recovery: &[u8] = b"KEYFILE-RECOVERY-code-2b8e10";
+
+        let mut v = Vault::create(b"masterpw", M, T, P).unwrap();
+        v.add_entry(entry("svc", b"s3cr3t"));
+        let _ = v.save().unwrap();
+        v.enroll_keyfile_2fa(b"masterpw", keyfile, recovery)
+            .unwrap();
+        assert!(v.is_2fa());
+        let bytes = v.save().unwrap();
+        assert!(Vault::requires_keyfile(&bytes));
+        assert!(!Vault::requires_yubikey(&bytes));
+
+        // password + correct keyfile → opens
+        let opened = Vault::open_keyfile(&bytes, b"masterpw", keyfile).unwrap();
+        assert_eq!(
+            opened.get("svc").unwrap().password.expose().as_slice(),
+            b"s3cr3t"
+        );
+        // password ALONE → fails (true 2FA)
+        assert!(matches!(
+            Vault::open(&bytes, b"masterpw"),
+            Err(Error::HeaderAuth)
+        ));
+        // wrong keyfile → fails
+        assert!(matches!(
+            Vault::open_keyfile(&bytes, b"masterpw", b"a-different-keyfile"),
+            Err(Error::HeaderAuth)
+        ));
+        // recovery code → opens (anti-lockout)
         let rec = Vault::open(&bytes, recovery).unwrap();
         assert_eq!(
             rec.get("svc").unwrap().password.expose().as_slice(),
