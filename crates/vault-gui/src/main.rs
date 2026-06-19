@@ -13,6 +13,16 @@
 #![forbid(unsafe_code)]
 
 mod clip;
+mod gui_config;
+mod keyfile_gui;
+mod list_virtualize;
+mod search_cache;
+
+use gui_config::{GuiConfig, REVEAL_TIMEOUT_SECS};
+use keyfile_gui::{load_or_create_keyfile, recovery_code};
+
+use list_virtualize::{visible_slice_range, ENTRY_ROW_HEIGHT};
+use search_cache::SearchCache;
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -23,19 +33,15 @@ use vault_core::gen::{password as gen_password, Charset};
 use vault_core::Vault;
 use zeroize::{Zeroize, Zeroizing};
 
-/// Seconds before the clipboard auto-clears after a copy (C13).
-const CLIPBOARD_TIMEOUT_SECS: u64 = 30;
 /// Length of a generated password (alphanumeric, ~119 bits at 20 chars).
 const GENERATED_LEN: usize = 20;
 /// Word count for a generated passphrase (built-in 256-word list → 8 bits/word; 8 words ≈ 64 bits).
 const GENERATED_WORDS: usize = 8;
-/// Default idle auto-lock timeout in seconds (0 = never). Configurable in-app (UC-06 / S-10).
-const DEFAULT_AUTOLOCK_SECS: u64 = 300;
 
 fn main() -> eframe::Result<()> {
     vault_core::memory::harden_process(); // C25: disable core dumps before touching secrets
 
-    let path = match default_vault_path() {
+    let path = match gui_config::resolve_vault_path() {
         Ok(p) => p,
         Err(e) => {
             eprintln!("vault-gui: {e}");
@@ -106,6 +112,18 @@ struct ImportReview {
     skipped: usize,
 }
 
+/// In-progress keyfile enrollment (UC-21).
+struct KeyfileEnrollState {
+    path: String,
+    enroll_pw: String,
+}
+
+impl Drop for KeyfileEnrollState {
+    fn drop(&mut self) {
+        self.enroll_pw.zeroize();
+    }
+}
+
 /// Actions collected while rendering (so click handlers don't fight the borrow checker over the
 /// open vault). Processed once per frame after the panels close.
 enum Action {
@@ -119,6 +137,9 @@ enum Action {
     Edit(usize),
     SetPadding(bool),
     SetAutoLock(u64),
+    SetClipboardTimeout(u64),
+    DismissPre10,
+    EnrollKeyfile,
     Audit,
 }
 
@@ -149,17 +170,32 @@ struct VaultApp {
     /// The latest password-health audit, shown as a modal when present.
     audit_report: Option<vault_core::audit::AuditReport>,
 
+    // keyfile 2FA (UC-09 / UC-21)
+    keyfile_path: String,
+    use_recovery: bool,
+    recovery_input: String,
+    keyfile_enroll: Option<KeyfileEnrollState>,
+    recovery_reveal: Option<String>,
+
+    gui_config: GuiConfig,
+    reveal_until: Option<Instant>,
+
     status: String,
     error: Option<String>,
 
     // auto-lock (UC-06 / S-10)
     auto_lock_secs: u64,
     last_activity: Instant,
+    search_cache: SearchCache,
+    entries_generation: u64,
+    display_items: Vec<(usize, String, Vec<u32>)>,
+    display_total: usize,
 }
 
 impl VaultApp {
     fn new(path: PathBuf) -> Self {
         let vault_exists = path.exists();
+        let gui_config = GuiConfig::load();
         VaultApp {
             path,
             vault: None,
@@ -176,11 +212,28 @@ impl VaultApp {
             import_review: None,
             rollback_warning: None,
             audit_report: None,
+            keyfile_path: String::new(),
+            use_recovery: false,
+            recovery_input: String::new(),
+            keyfile_enroll: None,
+            recovery_reveal: None,
+            gui_config: gui_config.clone(),
+            reveal_until: None,
             status: String::new(),
             error: None,
-            auto_lock_secs: load_auto_lock_secs(),
+            auto_lock_secs: gui_config.auto_lock_secs,
             last_activity: Instant::now(),
+            search_cache: SearchCache::default(),
+            entries_generation: 0,
+            display_items: Vec::new(),
+            display_total: 0,
         }
+    }
+
+    /// Invalidate the search cache after any vault mutation that can change find ordering or rows.
+    fn bump_entries_generation(&mut self) {
+        self.entries_generation = self.entries_generation.wrapping_add(1);
+        self.search_cache.clear();
     }
 
     /// Lock the vault when the idle timeout elapses or the window is minimized (UC-06). Returns
@@ -225,6 +278,106 @@ impl VaultApp {
         }
     }
 
+    /// Re-mask on-screen reveal after the configured timeout (C46).
+    fn enforce_reveal_timeout(&mut self, ctx: &egui::Context) {
+        if !self.reveal {
+            return;
+        }
+        let Some(until) = self.reveal_until else {
+            return;
+        };
+        if Instant::now() >= until {
+            self.reveal = false;
+            self.reveal_until = None;
+            return;
+        }
+        ctx.request_repaint_after(Duration::from_secs(1));
+    }
+
+    /// Lock when the main window loses focus if the user enabled it (C47).
+    fn enforce_focus_lock(&mut self, ctx: &egui::Context) -> bool {
+        if !self.gui_config.lock_on_blur {
+            return false;
+        }
+        let focused = ctx.input(|i| i.viewport().focused).unwrap_or(true);
+        if !focused {
+            self.lock();
+            self.status = "Locked (window lost focus).".into();
+            return true;
+        }
+        false
+    }
+
+    fn vault_needs_keyfile(&self) -> bool {
+        if !self.path.exists() {
+            return false;
+        }
+        std::fs::read(&self.path)
+            .ok()
+            .is_some_and(|b| Vault::requires_keyfile(&b))
+    }
+
+    fn start_keyfile_enroll(&mut self, path: String) {
+        self.error = None;
+        self.keyfile_enroll = Some(KeyfileEnrollState {
+            path,
+            enroll_pw: String::new(),
+        });
+    }
+
+    fn finish_keyfile_enroll(&mut self) {
+        let (path, pw) = {
+            let Some(st) = self.keyfile_enroll.as_ref() else {
+                return;
+            };
+            if st.enroll_pw.is_empty() {
+                self.error = Some("Enter your master password to confirm enrollment.".into());
+                return;
+            }
+            (st.path.clone(), Zeroizing::new(st.enroll_pw.clone()))
+        };
+        let path_buf = std::path::PathBuf::from(&path);
+        let keyfile = match load_or_create_keyfile(&path_buf) {
+            Ok(k) => k,
+            Err(e) => {
+                self.error = Some(e);
+                return;
+            }
+        };
+        let recovery = match recovery_code() {
+            Ok(c) => c,
+            Err(e) => {
+                self.error = Some(e);
+                return;
+            }
+        };
+        let result: Result<(), String> = (|| {
+            let vault = self.vault.as_mut().ok_or("vault is locked")?;
+            if vault.is_2fa() {
+                return Err("This vault already has a second factor.".into());
+            }
+            vault
+                .enroll_keyfile_2fa(pw.as_bytes(), &keyfile, recovery.as_bytes())
+                .map_err(|e| e.to_string())?;
+            Ok(())
+        })();
+        if let Err(e) = result {
+            self.error = Some(e);
+            return;
+        }
+        if let Err(e) = self.persist() {
+            self.error = Some(e);
+            return;
+        }
+        self.bump_entries_generation();
+        self.keyfile_enroll = None;
+        self.recovery_reveal = Some(recovery);
+        self.status = format!(
+            "Keyfile enrolled — keep {} on a separate device.",
+            path_buf.display()
+        );
+    }
+
     // ─── lock / unlock / create ─────────────────────────────────────────────
 
     fn try_unlock(&mut self) {
@@ -236,7 +389,29 @@ impl VaultApp {
                 return;
             }
         };
-        match Vault::open(&bytes, self.pw_input.as_bytes()) {
+        let opened = if self.use_recovery {
+            Vault::open(&bytes, self.recovery_input.as_bytes())
+        } else if Vault::requires_keyfile(&bytes) {
+            let kf_path = std::path::Path::new(self.keyfile_path.trim());
+            if self.keyfile_path.trim().is_empty() {
+                self.error = Some(
+                    "This vault requires a keyfile — choose one below (or use a recovery code)."
+                        .into(),
+                );
+                return;
+            }
+            let kf = match std::fs::read(kf_path) {
+                Ok(b) => b,
+                Err(e) => {
+                    self.error = Some(format!("Cannot read keyfile {}: {e}", kf_path.display()));
+                    return;
+                }
+            };
+            Vault::open_keyfile(&bytes, self.pw_input.as_bytes(), &kf)
+        } else {
+            Vault::open(&bytes, self.pw_input.as_bytes())
+        };
+        match opened {
             Ok(v) => {
                 let weak = matches!(
                     v.kdf_strength(),
@@ -248,8 +423,11 @@ impl VaultApp {
                 self.vault = Some(v);
                 self.pw_input.zeroize();
                 self.pw_confirm.zeroize();
+                self.recovery_input.zeroize();
+                self.use_recovery = false;
                 self.focus_search = true;
                 self.last_activity = Instant::now();
+                self.bump_entries_generation();
                 self.status = if self.rollback_warning.is_some() {
                     "Unlocked — review the rollback warning.".into()
                 } else if weak {
@@ -260,6 +438,7 @@ impl VaultApp {
             }
             Err(e) => {
                 self.pw_input.zeroize();
+                self.recovery_input.zeroize();
                 self.error = Some(match e {
                     vault_core::Error::HeaderAuth => "Incorrect master password.".to_string(),
                     other => other.to_string(),
@@ -312,6 +491,7 @@ impl VaultApp {
         self.vault = Some(v);
         self.vault_exists = true;
         self.last_activity = Instant::now();
+        self.bump_entries_generation();
         self.pw_input.zeroize();
         self.pw_confirm.zeroize();
         self.focus_search = true;
@@ -323,11 +503,19 @@ impl VaultApp {
         self.selected = None;
         self.reveal = false;
         self.query.zeroize(); // C37: the query echoes metadata fragments — wipe it, don't just clear
-
+        self.search_cache.clear();
+        self.display_items.clear();
+        self.display_total = 0;
+        self.entries_generation = 0;
         self.editor = None;
         self.import_review = None;
         self.rollback_warning = None;
         self.audit_report = None;
+        self.recovery_reveal = None;
+        self.keyfile_enroll = None;
+        self.reveal_until = None;
+        self.use_recovery = false;
+        self.recovery_input.zeroize();
         self.allow_weak_create = false;
         self.error = None;
         self.status.clear();
@@ -355,16 +543,18 @@ impl VaultApp {
         };
         match clip::copy(&secret) {
             Ok(()) => {
-                clip::schedule_clear(secret, CLIPBOARD_TIMEOUT_SECS);
+                clip::schedule_clear(secret, self.gui_config.clipboard_timeout_secs.max(1));
                 self.status = format!(
-                    "Copied {}'s password — clipboard clears in {CLIPBOARD_TIMEOUT_SECS}s.",
-                    one_line(&title)
+                    "Copied {}'s password — clipboard clears in {}s. Clipboard is visible to other apps.",
+                    one_line(&title),
+                    self.gui_config.clipboard_timeout_secs
                 );
                 // UC-19: learn the usage so this entry ranks higher next time; persist the bump
                 // inside the encrypted vault (C36). Best-effort — a copy already succeeded.
                 if let Some(v) = self.vault.as_mut() {
                     v.record_use(id, now_unix().max(0) as u64);
                 }
+                self.bump_entries_generation();
                 if let Err(e) = self.persist() {
                     self.error = Some(e);
                 }
@@ -520,6 +710,7 @@ impl VaultApp {
             self.error = Some(e);
             return;
         }
+        self.bump_entries_generation();
         self.status = format!("Saved {}.", one_line(&title));
         self.editor = None;
         self.select_by_title(&title);
@@ -536,6 +727,7 @@ impl VaultApp {
             self.error = Some(e);
             return;
         }
+        self.bump_entries_generation();
         self.selected = None;
         self.reveal = false;
         self.editor = None;
@@ -597,6 +789,7 @@ impl VaultApp {
             self.error = Some(e);
             return;
         }
+        self.bump_entries_generation();
         self.status = format!("Imported {n} entries — saved.");
     }
 
@@ -625,6 +818,7 @@ impl VaultApp {
 
     fn locked_screen(&mut self, ctx: &egui::Context) {
         let creating = !self.vault_exists;
+        let needs_keyfile = !creating && self.vault_needs_keyfile();
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.add_space(60.0);
             ui.vertical_centered(|ui| {
@@ -632,24 +826,70 @@ impl VaultApp {
                 ui.add_space(4.0);
                 ui.label(if creating {
                     "Create your vault — choose a master password you won't forget."
+                } else if needs_keyfile && self.use_recovery {
+                    "Enter your recovery code to unlock."
+                } else if needs_keyfile {
+                    "Enter master password and keyfile to unlock."
                 } else {
                     "Enter your master password to unlock."
                 });
                 ui.add_space(20.0);
 
                 let mut submit = false;
-                let pw = ui.add(
-                    egui::TextEdit::singleline(&mut self.pw_input)
-                        .password(true)
-                        .hint_text("Master password")
-                        .desired_width(320.0),
-                );
-                if self.focus_password {
-                    pw.request_focus();
-                    self.focus_password = false;
+                if needs_keyfile {
+                    ui.checkbox(&mut self.use_recovery, "Use recovery code (lost keyfile)");
+                    ui.add_space(6.0);
                 }
-                if pw.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                    submit = true;
+
+                if needs_keyfile && self.use_recovery {
+                    ui.label("Recovery code");
+                    let rc = ui.add(
+                        egui::TextEdit::singleline(&mut self.recovery_input)
+                            .password(true)
+                            .desired_width(320.0),
+                    );
+                    if self.focus_password {
+                        rc.request_focus();
+                        self.focus_password = false;
+                    }
+                    if rc.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                        submit = true;
+                    }
+                } else {
+                    ui.label("Master password");
+                    let pw = ui.add(
+                        egui::TextEdit::singleline(&mut self.pw_input)
+                            .password(true)
+                            .hint_text("Master password")
+                            .desired_width(320.0),
+                    );
+                    if self.focus_password {
+                        pw.request_focus();
+                        self.focus_password = false;
+                    }
+                    if pw.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                        submit = true;
+                    }
+
+                    if needs_keyfile {
+                        ui.add_space(6.0);
+                        ui.label("Keyfile path");
+                        ui.horizontal(|ui| {
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.keyfile_path)
+                                    .desired_width(220.0)
+                                    .hint_text("/path/to/vault.key"),
+                            );
+                            if ui.button("Choose…").clicked() {
+                                if let Some(p) = rfd::FileDialog::new()
+                                    .set_title("Choose keyfile")
+                                    .pick_file()
+                                {
+                                    self.keyfile_path = p.display().to_string();
+                                }
+                            }
+                        });
+                    }
                 }
 
                 if creating && !self.pw_input.is_empty() {
@@ -666,6 +906,7 @@ impl VaultApp {
 
                 if creating {
                     ui.add_space(6.0);
+                    ui.label("Confirm password");
                     let cf = ui.add(
                         egui::TextEdit::singleline(&mut self.pw_confirm)
                             .password(true)
@@ -704,36 +945,29 @@ impl VaultApp {
         });
     }
 
+    fn ensure_search_cache(&mut self) {
+        let Some(vault) = self.vault.as_ref() else {
+            return;
+        };
+        let total = vault.entries().len();
+        if self
+            .search_cache
+            .is_warm_for(&self.query, self.entries_generation, total)
+        {
+            return;
+        }
+        self.display_items = compute_search_items(vault, &self.query);
+        self.display_total = total;
+        self.search_cache
+            .mark(&self.query, self.entries_generation, total);
+    }
+
     fn unlocked_screen(&mut self, ctx: &egui::Context) {
         let mut action: Option<Action> = None;
 
-        // Precompute the fuzzy-ranked, frecency-nudged list (owned) so the list closure doesn't
-        // borrow the vault (UC-19). Matching is over non-secret metadata only (C35) and runs
-        // synchronously every repaint — no debounce — which stays well under the frame budget at
-        // this scale (C38). Each item carries the title's matched char positions for highlighting.
-        let (items, total): (Vec<(usize, String, Vec<u32>)>, usize) = {
-            let vault = self.vault.as_ref().expect("unlocked");
-            let entries = vault.entries();
-            let hits = vault.find(&self.query, now_unix().max(0) as u64);
-            let items = hits
-                .iter()
-                .map(|h| {
-                    // `h.entry` borrows into `entries`; recover its index for the selection state.
-                    let idx = entries
-                        .iter()
-                        .position(|e| std::ptr::eq(e, h.entry))
-                        .unwrap_or(0);
-                    let positions = h
-                        .matches
-                        .iter()
-                        .find(|m| matches!(m.field, vault_core::search::Field::Title))
-                        .map(|m| m.positions.clone())
-                        .unwrap_or_default();
-                    (idx, h.entry.title.clone(), positions)
-                })
-                .collect();
-            (items, entries.len())
-        };
+        self.ensure_search_cache();
+        let items = &self.display_items;
+        let total = self.display_total;
         let mut pad_on = matches!(
             self.vault.as_ref().expect("unlocked").padding(),
             vault_core::pad::PadMode::Padme
@@ -780,6 +1014,18 @@ impl VaultApp {
 
         // Top bar: search + actions + status.
         egui::TopBottomPanel::top("top").show(ctx, |ui| {
+            if !self.gui_config.dismissed_pre10 {
+                ui.horizontal(|ui| {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(210, 160, 60),
+                        "⚠ Pre-1.0 — no independent security audit. Keep a separate backup.",
+                    );
+                    if ui.button("Dismiss").clicked() {
+                        action = Some(Action::DismissPre10);
+                    }
+                });
+                ui.add_space(2.0);
+            }
             ui.add_space(4.0);
             ui.horizontal(|ui| {
                 ui.heading("Vault");
@@ -787,6 +1033,28 @@ impl VaultApp {
                     if ui.button("🔒 Lock").clicked() {
                         action = Some(Action::Lock);
                     }
+                    let mut lob = self.gui_config.lock_on_blur;
+                    if ui
+                        .checkbox(&mut lob, "Lock on blur")
+                        .on_hover_text("Lock immediately when the window loses focus (C47).")
+                        .changed()
+                    {
+                        self.gui_config.lock_on_blur = lob;
+                        self.gui_config.save();
+                    }
+                    let mut ct = self.gui_config.clipboard_timeout_secs;
+                    egui::ComboBox::from_id_salt("clip_timeout")
+                        .selected_text(format!("Clipboard: {ct}s"))
+                        .show_ui(ui, |ui| {
+                            for s in [15u64, 30, 60] {
+                                if ui
+                                    .selectable_value(&mut ct, s, format!("{s}s"))
+                                    .clicked()
+                                {
+                                    action = Some(Action::SetClipboardTimeout(s));
+                                }
+                            }
+                        });
                     let mut al = self.auto_lock_secs;
                     egui::ComboBox::from_id_salt("autolock")
                         .selected_text(format!("Auto-lock: {}", auto_lock_label(al)))
@@ -813,6 +1081,11 @@ impl VaultApp {
                     if ui.button("🩺 Audit").clicked() {
                         action = Some(Action::Audit);
                     }
+                    if self.vault.as_ref().is_some_and(|v| !v.is_2fa())
+                        && ui.button("🔑 Keyfile 2FA").clicked()
+                    {
+                        action = Some(Action::EnrollKeyfile);
+                    }
                     if ui.button("Import keys.txt").clicked() {
                         action = Some(Action::ChooseImport);
                     }
@@ -824,7 +1097,9 @@ impl VaultApp {
             ui.add_space(2.0);
             let search = ui.add(
                 egui::TextEdit::singleline(&mut self.query)
-                    .hint_text("🔎  Fuzzy search (⌘K) — title, user, url, tag…")
+                    .hint_text(
+                        "🔎 Fuzzy search (⌘K) — titles, usernames, urls, tags only (never passwords)",
+                    )
                     .desired_width(f32::INFINITY),
             );
             if self.focus_search {
@@ -862,14 +1137,31 @@ impl VaultApp {
                     .show(ui, |ui| {
                         if items.is_empty() {
                             ui.weak("No matching entries.");
+                            return;
                         }
-                        for (idx, title, positions) in &items {
+                        let scroll_off = (-ui.min_rect().top()).max(0.0);
+                        let range =
+                            visible_slice_range(items.len(), scroll_off, ui.clip_rect().height());
+                        let (lo, hi) = (range.start, range.end);
+                        if lo > 0 {
+                            ui.allocate_space(egui::vec2(
+                                ui.available_width(),
+                                lo as f32 * ENTRY_ROW_HEIGHT,
+                            ));
+                        }
+                        for (idx, title, positions) in &items[lo..hi] {
                             let selected = self.selected == Some(*idx);
                             let job = highlight_title(title, positions, ui);
                             if ui.selectable_label(selected, job).clicked() {
                                 self.selected = Some(*idx);
                                 self.reveal = false;
                             }
+                        }
+                        if hi < items.len() {
+                            ui.allocate_space(egui::vec2(
+                                ui.available_width(),
+                                (items.len() - hi) as f32 * ENTRY_ROW_HEIGHT,
+                            ));
                         }
                     });
             });
@@ -994,7 +1286,15 @@ impl VaultApp {
                 Action::Lock => self.lock(),
                 Action::Add => self.editor = Some(Editor::new_add()),
                 Action::ChooseImport => self.choose_and_load_import(),
-                Action::ToggleReveal => self.reveal = !self.reveal,
+                Action::ToggleReveal => {
+                    self.reveal = !self.reveal;
+                    if self.reveal {
+                        self.reveal_until =
+                            Some(Instant::now() + Duration::from_secs(REVEAL_TIMEOUT_SECS));
+                    } else {
+                        self.reveal_until = None;
+                    }
+                }
                 Action::CopyPassword(i) => self.copy_password(i),
                 Action::CopyUsername(i) => self.copy_username(i),
                 Action::CopyOtp(i) => self.copy_otp(i),
@@ -1002,9 +1302,27 @@ impl VaultApp {
                 Action::SetPadding(on) => self.set_padding(on),
                 Action::SetAutoLock(secs) => {
                     self.auto_lock_secs = secs;
+                    self.gui_config.auto_lock_secs = secs;
+                    self.gui_config.save();
                     self.last_activity = Instant::now();
-                    save_auto_lock_secs(secs);
                     self.status = format!("Auto-lock set to {}.", auto_lock_label(secs));
+                }
+                Action::SetClipboardTimeout(secs) => {
+                    self.gui_config.clipboard_timeout_secs = secs;
+                    self.gui_config.save();
+                    self.status = format!("Clipboard clears after {secs}s.");
+                }
+                Action::DismissPre10 => {
+                    self.gui_config.dismissed_pre10 = true;
+                    self.gui_config.save();
+                }
+                Action::EnrollKeyfile => {
+                    if let Some(p) = rfd::FileDialog::new()
+                        .set_title("Create or choose keyfile path")
+                        .save_file()
+                    {
+                        self.start_keyfile_enroll(p.display().to_string());
+                    }
                 }
                 Action::Audit => {
                     if let Some(v) = self.vault.as_ref() {
@@ -1365,18 +1683,82 @@ impl VaultApp {
             self.lock();
         }
     }
+
+    fn keyfile_enroll_window(&mut self, ctx: &egui::Context) {
+        let mut confirm = false;
+        let mut cancel = false;
+        if let Some(st) = self.keyfile_enroll.as_mut() {
+            egui::Window::new("Enroll keyfile 2FA")
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    ui.label(format!("Keyfile path: {}", st.path));
+                    ui.label("Re-enter your master password to confirm. Keep the keyfile on a separate device.");
+                    ui.add_space(6.0);
+                    ui.label("Master password");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut st.enroll_pw)
+                            .password(true)
+                            .desired_width(280.0),
+                    );
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        if ui.button("Enroll").clicked() {
+                            confirm = true;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            cancel = true;
+                        }
+                    });
+                });
+        }
+        if confirm {
+            self.finish_keyfile_enroll();
+        }
+        if cancel {
+            self.keyfile_enroll = None;
+        }
+    }
+
+    fn recovery_reveal_window(&mut self, ctx: &egui::Context) {
+        let Some(code) = self.recovery_reveal.clone() else {
+            return;
+        };
+        let mut close = false;
+        egui::Window::new("🔑 Recovery code — store offline")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.label("This code unlocks WITHOUT the keyfile if it is lost. Copy it now.");
+                ui.add_space(6.0);
+                ui.monospace(&code);
+                ui.add_space(8.0);
+                if ui.button("I've saved it").clicked() {
+                    close = true;
+                }
+            });
+        if close {
+            self.recovery_reveal = None;
+        }
+    }
 }
 
 impl eframe::App for VaultApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if self.vault.is_some() {
-            self.enforce_auto_lock(ctx); // may lock → re-check below
+            self.enforce_auto_lock(ctx);
+            let _ = self.enforce_focus_lock(ctx);
         }
         if self.vault.is_some() {
+            self.enforce_reveal_timeout(ctx);
             self.handle_dropped_files(ctx);
             self.unlocked_screen(ctx);
             self.editor_window(ctx);
             self.import_window(ctx);
+            self.keyfile_enroll_window(ctx);
+            self.recovery_reveal_window(ctx);
             self.rollback_modal(ctx);
             self.audit_modal(ctx);
         } else {
@@ -1386,6 +1768,27 @@ impl eframe::App for VaultApp {
 }
 
 // ─── free helpers ────────────────────────────────────────────────────────────
+
+/// Fuzzy-ranked list rows for the omni-search panel (UC-19 metadata-only, C35).
+fn compute_search_items(vault: &Vault, query: &str) -> Vec<(usize, String, Vec<u32>)> {
+    let entries = vault.entries();
+    let hits = vault.find(query, now_unix().max(0) as u64);
+    hits.iter()
+        .map(|h| {
+            let idx = entries
+                .iter()
+                .position(|e| std::ptr::eq(e, h.entry))
+                .unwrap_or(0);
+            let positions = h
+                .matches
+                .iter()
+                .find(|m| matches!(m.field, vault_core::search::Field::Title))
+                .map(|m| m.positions.clone())
+                .unwrap_or_default();
+            (idx, h.entry.title.clone(), positions)
+        })
+        .collect()
+}
 
 /// Advance the local rollback anchor to the vault's current version (C16). Best-effort.
 fn advance_anchor_for(vault: &Vault) {
@@ -1458,48 +1861,6 @@ fn auto_lock_label(secs: u64) -> &'static str {
         1800 => "30m",
         _ => "custom",
     }
-}
-
-/// Path to the GUI config file (`<home>/.vault/config`), independent of the chosen vault file.
-fn config_path() -> Option<PathBuf> {
-    default_vault_path()
-        .ok()
-        .and_then(|p| p.parent().map(|d| d.join("config")))
-}
-
-/// Load the idle auto-lock timeout from the config file, defaulting if absent/unreadable.
-fn load_auto_lock_secs() -> u64 {
-    let Some(p) = config_path() else {
-        return DEFAULT_AUTOLOCK_SECS;
-    };
-    let Ok(text) = std::fs::read_to_string(&p) else {
-        return DEFAULT_AUTOLOCK_SECS;
-    };
-    for line in text.lines() {
-        if let Some(v) = line.trim().strip_prefix("auto_lock_secs=") {
-            if let Ok(n) = v.trim().parse::<u64>() {
-                return n;
-            }
-        }
-    }
-    DEFAULT_AUTOLOCK_SECS
-}
-
-/// Persist the idle auto-lock timeout (best-effort).
-fn save_auto_lock_secs(secs: u64) {
-    if let Some(p) = config_path() {
-        if let Some(dir) = p.parent() {
-            let _ = std::fs::create_dir_all(dir);
-        }
-        let _ = std::fs::write(&p, format!("auto_lock_secs={secs}\n"));
-    }
-}
-
-fn default_vault_path() -> Result<PathBuf, String> {
-    let home = std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .ok_or("cannot determine your home directory")?;
-    Ok(PathBuf::from(home).join(".vault").join("vault.vlt"))
 }
 
 /// Atomic write: temp file (0600 on Unix) in the same dir → fsync → rename over the target.

@@ -1,61 +1,89 @@
 # CLI Reference
 
-> Authoritative spec: constraints **C20–C22, C26–C29, C31, C33** in [vault_intent.yaml](../vault_intent.yaml).
-> Commands are **not yet implemented** (pre-alpha); this documents the intended surface.
+> **Status:** core loop implemented and tested (pre-1.0). Authoritative constraints:
+> **C20–C22, C26–C29, C31, C33, C35–C39** in [vault_intent.yaml](../vault_intent.yaml).
+> Stubs below are marked *(not yet implemented)*.
 
-## Commands
+Default vault path: `$HOME/.vault/vault.vlt` (override with `--vault PATH`).
+
+## Implemented commands
 
 | Command | Description |
 |---------|-------------|
-| `vault init [--file PATH]` | Create a vault (prompts for a master password). |
-| `vault add NAME [--interactive]` | Add an entry. **Secrets are never passed as flags.** |
-| `vault get NAME [--field FIELD] [--stdout]` | Get a field — **to the clipboard by default**. |
-| `vault gen [--length N] [--charset alnum\|ascii\|words] [--words N]` | CSPRNG password generator. |
-| `vault ls [--search QUERY]` | List/search entry names (after unlock, in memory only). |
-| `vault edit NAME` | Edit an entry. |
-| `vault rm NAME` | Delete an entry (confirmation required). |
-| `vault lock` | Clear the in-memory session. |
-| `vault export --format json` | Export decrypted entries (prints a security warning). |
-| `vault import --format txt\|json` | Import entries. |
-| `vault upgrade-kdf` | Re-derive with current recommended Argon2id params. |
-| `vault tune` | Benchmark and recommend Argon2id params for this machine. |
-| `vault merge OLD.vlt NEW.vlt` | Manually merge two conflicting vault versions. |
-| `vault stanzas list\|add TYPE\|remove TYPE` | Manage hardware/OS-keystore unlock stanzas (C5). |
-| `vault enroll yubikey` | Add a required **YubiKey** second factor (true 2FA); prints a recovery code. |
-| `vault enroll keyfile <PATH>` | Add a required **keyfile** second factor (no hardware); generates `<PATH>` if absent. |
-| `vault enroll-tpm` / `re-enroll-tpm` | Manage the optional TPM stanza. |
+| `vault init` | Create a vault (master password prompt; seeds `vault.vlt.bak`). |
+| `vault import --format raw <file> [--yes]` | Import a messy `keys.txt` (masked review; `--yes` for scripts). |
+| `vault ls [--search QUERY]` | List entry titles; substring search on title/tags. |
+| `vault find [QUERY] [--stdout]` | Fuzzy omni-search (UC-19); copies top match to clipboard. |
+| `vault get NAME [--field FIELD] [--stdout]` | Get a field — clipboard by default. |
+| `vault add NAME` | Add an entry (interactive prompts; no secrets on argv). |
+| `vault edit NAME` | Edit an entry (interactive). |
+| `vault rm NAME` | Delete an entry (confirmation on TTY). |
+| `vault gen [--length N] [--charset …] [--words N]` | CSPRNG password / diceware generator. |
+| `vault otp NAME [--stdout]` | Current TOTP code for an entry with a 2FA secret. |
+| `vault audit` | Offline health report (weak/reused/stale passwords). |
+| `vault upgrade-kdf` | Re-encrypt with stronger Argon2id parameters. |
+| `vault tune` | Benchmark and recommend Argon2id params (~300 ms target). |
+| `vault pad on\|off` | Toggle Padmé payload size-padding (UC-07). |
+| `vault enroll yubikey` | Required-both YubiKey 2FA + one-time recovery code. |
+| `vault enroll keyfile <PATH>` | Required-both keyfile 2FA (no hardware). |
+
+## Not yet implemented
+
+| Command | Notes |
+|---------|-------|
+| `vault lock` | In-memory session clear. |
+| `vault export --format json` | Decrypted export with security warning. |
+| `vault import --format txt\|json` | Structured importers (UC-12). |
+| `vault merge OLD NEW` | Conflict merge (UC-08). |
+| `vault stanzas …` | Hardware stanza management. |
+| `vault enroll-tpm` | TPM stanza enrollment. |
+
+## `vault find` — searchable fields (constraint C35)
+
+`vault find` and `vault ls --search` match **metadata only**:
+
+- **Searched:** `title`, `username`, `url`, `tags`
+- **Never searched:** `password`, `otp_secret`, protected custom fields, `notes`
+
+This is intentional — the matcher cannot leak a secret it never sees. Use `vault get NAME` after
+finding by title.
+
+`--stdout` lists ranked titles only (no secret values, scriptable).
+
+## `vault import --format raw`
+
+Parses unstructured secrets files (`key=value`, bare secret lines, `---` block rulers).
+
+- **Interactive (TTY):** shows masked previews, prompts `Import these into the vault? [y/N]`
+- **Scripted (piped stdin):** requires `--yes` (exit **8** without it)
+- **`--yes` on TTY:** skips the confirmation prompt
 
 ## Second factors — true 2FA (UC-09)
 
 `vault enroll yubikey` and `vault enroll keyfile <PATH>` turn the master password into a
 **required-both** factor: the data key is re-wrapped under
-`HKDF(Argon2id(password) ‖ factor)`, so the password **alone no longer unlocks**. The factor is a
-YubiKey HMAC-SHA1 response (tap on unlock) or `SHA-256(keyfile)` (no hardware).
+`HKDF(Argon2id(password) ‖ factor)`, so the password **alone no longer unlocks**.
 
-- Unlock a keyfile vault: `vault --keyfile <PATH> <cmd>`. Keep the keyfile on a **separate device**
-  from the vault — co-locating them defeats the factor.
-- **Anti-lockout.** Enrollment prints a one-time high-entropy **recovery code**. If the key/keyfile
-  is lost, `vault --recovery <cmd>` unlocks via the recovery code (entered at the password prompt).
-- Only one second factor can be enrolled at a time.
+- Keyfile unlock: `vault --keyfile <PATH> <cmd>` — keep the keyfile on a **separate device**.
+- **Anti-lockout:** enrollment prints a one-time **recovery code**; `vault --recovery <cmd>` if
+  the factor is lost.
+- Only one second factor enrolled at a time.
 
-## Secret-handling rules (why the CLI looks the way it does)
+## Secret-handling rules
 
-- **No secrets on the command line.** Passwords are read via a no-echo prompt, stdin, or
-  `--password-fd N` — never an argv flag (it would leak to shell history and `ps`). *(constraint C31)*
-- **`vault get` delivers to the clipboard by default.** Printing to stdout requires the explicit
-  `--stdout` flag, which prints a warning — so an AI agent watching the process's stdout can't
-  silently scrape the secret. This guards against *incidental* capture; an agent that can run shell
-  commands on an unlocked session is same-user malware (see the threat model). With **no clipboard
-  available** (headless SSH), `vault get` refuses with exit code 7 rather than silently degrading
-  to stdout. *(constraint C27)*
-- **Clipboard auto-clears** after 30s (configurable 5–300s) via a **detached helper process** (a
-  one-shot CLI's thread can't outlive it) that clears only if the clipboard still holds our value,
-  and is marked concealed/transient so OS clipboard history / cloud-clipboard sync skip it.
-  *(constraints C13, C33)*
-- **Output is sanitized**: control/ANSI escape sequences in stored fields are neutralized before
-  being written to a terminal, and exports escape formula metacharacters. *(constraints C28, C29)*
+- **No secrets on argv** (C31) — passwords via no-echo prompt or stdin.
+- **`vault get` → clipboard by default** (C27); `--stdout` is explicit opt-in with warning.
+- **Headless:** `vault get` without clipboard refuses with exit **7** unless `--stdout`.
+- **Clipboard auto-clears** via detached helper (C13/C33).
+- **Terminal output sanitized** (C28/C30).
 
-## Exit codes (stable — scripts can rely on them; constraint C21)
+## Pre-1.0 / backup notice
+
+Vault is **not independently audited**. On `init` and `import`, the CLI prints a notice and writes
+`vault.vlt.bak` beside the vault before overwriting. Keep an **off-site copy** — do not make the
+vault file your only backup.
+
+## Exit codes (stable — constraint C21)
 
 | Code | Meaning |
 |------|---------|
@@ -67,12 +95,12 @@ YubiKey HMAC-SHA1 response (tap on unlock) or `SHA-256(keyfile)` (no hardware).
 | 5 | authentication — invalid credentials or tampered header (C9) |
 | 6 | KDF parameters outside the safe range (C2) |
 | 7 | no clipboard available and `--stdout` not given (C27) |
-| 8 | usage error — bad arguments/flags |
+| 8 | usage error — bad arguments/flags (e.g. piped import without `--yes`) |
 | 9 | entry or field not found / ambiguous |
 
 ## Configuration
 
-`~/.vault.toml` (optional):
+`~/.vault.toml` (optional; partial support):
 
 ```toml
 clipboard_timeout = 30     # seconds, 5..=300
@@ -80,3 +108,7 @@ auto_lock_seconds = 300    # seconds, 30..=3600, 0 = disabled
 keep_backup = false        # retain vault.vlt.bak after a verified save (constraint C32)
 yubikey_strict = false     # abort body-writing saves when the YubiKey is absent (constraint C5)
 ```
+
+## Install
+
+See [INSTALL.md](INSTALL.md) — `./scripts/install.sh` or `cargo install --git …`.

@@ -7,6 +7,26 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- **UC-22 enterprise readiness (C55–C60):** `scripts/audit-readiness.sh` + `just audit-ready`,
+  `docs/AUDIT_READINESS.md`, `docs/ENTERPRISE_POSTURE.md`, `docs/guides/enterprise-deployment.md`,
+  GUI env vars (`VAULT_VAULT_PATH`, `VAULT_CONFIG_DIR`, `VAULT_LOCK_ON_BLUR`), C38 release-only
+  bench, C59 N=5000 / 200 ms search bench. Spec
+  [UC-22](docs/specs/UC-22-enterprise-readiness.md); intent v1.7.0.
+- **UC-21 desktop gaps closure (C46–C54):** time-boxed reveal (15s), optional lock-on-blur,
+  keyfile 2FA enroll/unlock GUI, pre-1.0 banner, configurable clipboard timeout, virtualize
+  threshold 100, metadata-only search hint, password field labels. Spec
+  [UC-21](docs/specs/UC-21-desktop-gaps-closure.md); intent v1.6.0.
+- **UC-20 desktop GUI hardening (implemented):** glow renderer pin (C41), fuzzy search cache
+  (C42), entry-list virtualization above 500 rows (C43), reactive-repaint invariants (C40),
+  password-field masking audit (C44), thin-shell constraint tests (C45). New modules
+  `search_cache.rs`, `list_virtualize.rs`; tests in `vault-gui/tests/uc20_constraints.rs`.
+- **Intent v1.5.0:** UC-20 desktop GUI constraints **C40–C45** (G13) — reactive repaint,
+  glow renderer pin, search cache, list virtualization, password masking, thin-shell boundary.
+  Spec: [docs/specs/UC-20-desktop-gui-hardening.md](docs/specs/UC-20-desktop-gui-hardening.md).
+- **CLI import/search hardening:** piped `import` without `--yes` exits **8** (UC-05/UC-17).
+  Pre-1.0 audit notice on init/import; automatic `vault.vlt.bak` on init and before import
+  overwrites. `vault find` no-match explains C35 searchable scope. `./scripts/install.sh` +
+  updated [docs/INSTALL.md](docs/INSTALL.md) and [docs/CLI.md](docs/CLI.md).
 - **Fuzzy keyboard-first omni-search (UC-19, CLI + GUI).** Type a few characters — `gh`, `awsprod`,
   a typo like `githb` — and the right entry rises to the top instantly; Enter copies the password to
   the (auto-clearing, model-blind) clipboard. fzf-quality scoring via `nucleo-matcher` (offline,

@@ -1,26 +1,36 @@
 # Installation
 
-> **Pre-alpha:** there is no installable release yet. These are the intended install paths.
+> **Status:** functional pre-1.0 — build from source or install via `cargo install --git`.
+> Pre-built signed binaries ship on [GitHub Releases](https://github.com/leocelis/vault/releases)
+> when a version tag is pushed. There is no [crates.io](https://crates.io) publish yet.
 
-## From crates.io (intended)
+## Quick install (recommended)
+
+From a clone of this repo:
 
 ```sh
-cargo install vault-cli
+git clone git@github.com:leocelis/vault.git   # private — use your access
+cd vault
+./scripts/setup-rust.sh    # once: project-scoped toolchain in ./.toolchain
+./scripts/install.sh       # builds release binary → ~/.local/bin/vault
 ```
 
-One statically-linked binary, no runtime dependencies (no JVM/Python/Node) — constraint C20.
+Ensure `~/.local/bin` is on your `PATH`.
 
-## Pre-built binaries (intended)
-
-Download from the [GitHub Releases](https://github.com/leocelis/vault/releases) page, then
-**verify the signature and checksum** before running — see [VERIFYING_RELEASES.md](VERIFYING_RELEASES.md).
-
-## From source
+## Install from Git without cloning (interim until crates.io)
 
 ```sh
-git clone https://github.com/leocelis/vault
+cargo install --git https://github.com/leocelis/vault.git --locked vault-cli
+```
+
+Produces one statically-linked binary when built with the project's pinned toolchain.
+
+## Build from source (manual)
+
+```sh
 cd vault
-cargo build --release --locked
+. scripts/dev-env.sh       # activate ./.toolchain (or use your own Rust 1.96+)
+cargo build --release -p vault-cli
 # Binary at target/release/vault
 ```
 
@@ -28,9 +38,14 @@ cargo build --release --locked
 
 ```sh
 rustup target add x86_64-unknown-linux-musl
-cargo build --release --target x86_64-unknown-linux-musl
+cargo build --release --locked --target x86_64-unknown-linux-musl
 ldd target/x86_64-unknown-linux-musl/release/vault   # → "not a dynamic executable"
 ```
+
+## Pre-built binaries
+
+When available, download from [GitHub Releases](https://github.com/leocelis/vault/releases), then
+**verify the signature and checksum** before running — see [VERIFYING_RELEASES.md](VERIFYING_RELEASES.md).
 
 ## Supported platforms
 
@@ -41,3 +56,46 @@ ldd target/x86_64-unknown-linux-musl/release/vault   # → "not a dynamic execut
 
 FIDO2 / TPM / OS-keystore stanzas are behind the `vault-hardware` crate's feature flags and may
 require system libraries (e.g. `libfido2`). They are **optional** — the password stanza always works.
+
+## Desktop app (`vault-gui`)
+
+Build the windowed app (egui/eframe, glow renderer — UC-20):
+
+```sh
+cargo build --release -p vault-gui
+# Binary at target/release/vault-gui
+```
+
+### Linux GUI dependencies
+
+`vault-gui` uses native file dialogs (`rfd`) via **xdg-desktop-portal**. Install a portal backend
+before building or running on Linux:
+
+```sh
+# Debian/Ubuntu (GTK portal)
+sudo apt install libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+  libxkbcommon-dev libssl-dev xdg-desktop-portal-gtk zenity
+
+# Fedora (KDE portal alternative)
+sudo dnf install gtk3-devel openssl-devel xdg-desktop-portal-kde zenity
+```
+
+CI installs the GTK stack — see `.github/workflows/ci.yml` for the canonical package list.
+
+### Enterprise / fleet deployment
+
+For managed installs (custom vault path, config directory, forced lock-on-blur), see
+[guides/enterprise-deployment.md](guides/enterprise-deployment.md) and
+[ENTERPRISE_POSTURE.md](ENTERPRISE_POSTURE.md).
+
+### Renderer upgrade path (eframe ≥ 0.34)
+
+The workspace pins **glow** for smaller binaries and lower idle RAM on weak hardware. If you bump
+eframe to ≥0.34 and switch to **wgpu**, set `desired_maximum_frame_latency: Some(1)` in
+`NativeOptions::wgpu_options` — see [UC-20 spec](specs/UC-20-desktop-gui-hardening.md) §3.1.
+
+## Pre-1.0 caution
+
+Vault has **not** had an independent third-party security audit. Keep a **separate backup** of
+anything you store — `vault init` writes an initial `vault.vlt.bak`, and `vault import` backs up
+the previous generation before overwriting.

@@ -359,20 +359,13 @@ mod tests {
         );
     }
 
-    /// T4 (C38): a full-corpus fuzzy match for short queries stays under the 100 ms budget at
-    /// N = 2000 — even in an unoptimized debug build, where this runs far slower than release.
+    /// T4 (C38): full-corpus fuzzy match under 100 ms at N=2000 in **release** builds (C58).
     #[test]
     fn latency_under_budget_at_scale() {
-        let mut entries = Vec::with_capacity(2000);
-        for i in 0..2000u32 {
-            entries.push(entry(
-                &format!("service-{i}-github-api"),
-                &format!("user{i}@example.com"),
-                &format!("https://host-{i}.example.com/login"),
-                &["work", "cloud", "prod"],
-                b"secret-value",
-            ));
+        if cfg!(debug_assertions) {
+            return;
         }
+        let entries = synthetic_corpus(2000);
         let mut eng = Engine::new();
         for q in [
             "g", "gh", "git", "githu", "service", "user12", "examp", "cloud",
@@ -390,6 +383,41 @@ mod tests {
                 "query {q:?} should match the synthetic corpus"
             );
         }
+    }
+
+    /// C59: enterprise-scale corpus — 200 ms budget at N=5000 in release.
+    #[test]
+    fn latency_at_five_thousand() {
+        if cfg!(debug_assertions) {
+            return;
+        }
+        let entries = synthetic_corpus(5000);
+        let mut eng = Engine::new();
+        for q in ["git", "service", "user42", "cloud", "prod"] {
+            let t = std::time::Instant::now();
+            let hits = eng.search(&entries, q);
+            let elapsed = t.elapsed();
+            assert!(
+                elapsed.as_millis() < 200,
+                "query {q:?} took {elapsed:?} (> 200 ms budget, C59) at N={}",
+                entries.len()
+            );
+            assert!(!hits.is_empty(), "query {q:?} should match");
+        }
+    }
+
+    fn synthetic_corpus(n: u32) -> Vec<Entry> {
+        let mut entries = Vec::with_capacity(n as usize);
+        for i in 0..n {
+            entries.push(entry(
+                &format!("service-{i}-github-api"),
+                &format!("user{i}@example.com"),
+                &format!("https://host-{i}.example.com/login"),
+                &["work", "cloud", "prod"],
+                b"secret-value",
+            ));
+        }
+        entries
     }
 
     /// Empty query is browse mode: every entry, deterministic order.

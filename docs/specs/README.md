@@ -28,6 +28,10 @@ plan and open questions.
 | [UC-16](UC-16-agent-interface-future.md) | Agent uses the vault, never sees a secret *(post-v1 exploration)* | C27 (forward) |
 | [UC-17](UC-17-quick-capture-raw-import.md) | Quick-capture from a messy `keys.txt` (lenient import + review) | C21, C26, C18, C19, C27 |
 | [UC-18](UC-18-native-ui.md) | Fast native UI over a shared Rust core *(post-v1; core API is v1)* | C20, C11, C12, C25, C27, C5 |
+| [UC-19](UC-19-omni-search.md) | Fuzzy keyboard-first omni-search (CLI + GUI) | C35–C39 |
+| [UC-20](UC-20-desktop-gui-hardening.md) | Desktop GUI performance & security hardening (`vault-gui`) | C40–C45; C20, C27, C30, C35, C38 |
+| [UC-21](UC-21-desktop-gaps-closure.md) | Desktop gaps closure — session hygiene, keyfile GUI, trust UX | C46–C54; C27, C35, C44, UC-09 |
+| [UC-22](UC-22-enterprise-readiness.md) | Enterprise readiness — audit prep, fleet deploy, scale benches | C55–C60; C38, C39 |
 
 ## Spec lifecycle
 

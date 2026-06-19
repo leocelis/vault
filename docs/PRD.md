@@ -243,6 +243,34 @@ logged (C37), and every keystroke repaints in under 100 ms (C38). Surfaces as `v
 and a GUI omni-bar. This is the friendly half of the `keys.txt` story, built so the secure half is
 free. See [spec UC-19](specs/UC-19-omni-search.md).
 
+### UC-20 · Harden the desktop app for speed on any machine
+**Persona:** P1, P3 · **Constraints:** C40–C45; touches C20, C27, C30, C35, C38, C13
+
+The shipped `vault-gui` (egui/eframe) gets a performance and presentation-hardening pass: pin the
+**glow** renderer for small binaries and low idle RAM, **cache** fuzzy search between repaints,
+**virtualize** the entry list above 500 rows, and enforce **reactive** repaint (~0% CPU idle).
+Security gaps close: no eframe persistence, password fields not exposed to accessibility APIs, Linux
+file-dialog dependencies documented. Extends UC-18 P2 without moving logic out of `vault-core`.
+See [spec UC-20](specs/UC-20-desktop-gui-hardening.md).
+
+### UC-21 · Close remaining desktop app gaps
+**Persona:** P1, P3 · **Constraints:** C46–C54; touches C27, C35, C44, UC-09
+
+Mitigates the post-UC-20 gap review: time-boxed reveal, optional lock-on-blur, keyfile 2FA
+enroll/unlock in the GUI, pre-1.0 banner, configurable clipboard timeout, lower virtualization
+threshold (100), search-scope hint, a11y labels. Architectural gaps (SwiftUI shell, external
+audit, eframe 0.34) are explicitly deferred per the spec ledger.
+See [spec UC-21](specs/UC-21-desktop-gaps-closure.md).
+
+### UC-22 · Enterprise readiness (audit prep & fleet deployment)
+**Persona:** P5 · **Constraints:** C55–C60; touches C38, C39
+
+Prepares for CP-7 third-party audit without claiming enterprise certification: audit intake
+doc + `audit-readiness.sh` gate, enterprise deployment env vars (`VAULT_VAULT_PATH`,
+`VAULT_CONFIG_DIR`, `VAULT_LOCK_ON_BLUR`), release-only search benches (C38 skip in debug,
+C59 at N=5000 / 200 ms), and honest posture docs (no SOC2/SSO/team vaults in v1).
+See [spec UC-22](specs/UC-22-enterprise-readiness.md).
+
 ## 6. Out of scope for v1 (non-goals)
 
 From the intent's `non_goals:` — hosted sync service, browser extension, GUI, team vaults,

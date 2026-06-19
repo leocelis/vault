@@ -77,7 +77,7 @@ cargo build --release -p vault-cli
 alias vault=target/release/vault
 
 vault init                      # create a vault (prompts for a master password)
-vault import --format raw keys.txt   # migrate a messy keys.txt (masked review)
+vault import --format raw --yes keys.txt   # migrate a messy keys.txt (use --yes when piped)
 vault gen --length 24           # generate a CSPRNG password…
 vault gen --words 8             # …or a diceware passphrase
 vault add github                # add an entry (no secrets on the command line)

@@ -18,6 +18,38 @@ use crate::Command;
 
 type CmdResult = Result<(), String>;
 
+pub const USAGE_ERROR_PREFIX: &str = "usage:";
+
+fn usage_err(msg: impl Into<String>) -> String {
+    format!("{USAGE_ERROR_PREFIX} {}", msg.into())
+}
+
+/// Shown on init/import/open paths — pre-1.0 software has not had an independent audit.
+const PRE_RELEASE_NOTICE: &str = "note: Vault is pre-1.0 and not independently audited — \
+keep a separate backup; do not make this your only copy of irreplaceable secrets.";
+
+fn pre_release_notice() {
+    eprintln!("{PRE_RELEASE_NOTICE}");
+}
+
+/// `vault.vlt` → `vault.vlt.bak` (constraint C32 naming).
+fn vault_backup_path(path: &Path) -> PathBuf {
+    let mut s = path.as_os_str().to_os_string();
+    s.push(".bak");
+    PathBuf::from(s)
+}
+
+/// Copy the current vault to a `.bak` sibling before overwriting it.
+fn backup_vault_if_exists(path: &Path) -> CmdResult {
+    if !path.exists() {
+        return Ok(());
+    }
+    let bak = vault_backup_path(path);
+    std::fs::copy(path, &bak).map_err(|e| format!("cannot write backup {}: {e}", bak.display()))?;
+    eprintln!("Backup written to {}", bak.display());
+    Ok(())
+}
+
 /// Options that affect how a vault is opened — the rollback policy (constraint C16).
 pub struct OpenOpts {
     /// Proceed past a regression without prompting (the anchor is never lowered).
@@ -45,9 +77,11 @@ pub fn dispatch(vault_opt: Option<PathBuf>, opts: &OpenOpts, command: Command) -
             kdf_p_cost,
             allow_weak_password,
         ),
-        Command::Import { format, source } => {
-            cmd_import(&vault_path(vault_opt)?, &format, &source, opts)
-        }
+        Command::Import {
+            format,
+            source,
+            yes,
+        } => cmd_import(&vault_path(vault_opt)?, &format, &source, yes, opts),
         Command::Ls { search } => cmd_ls(&vault_path(vault_opt)?, search.as_deref(), opts),
         Command::Audit => cmd_audit(&vault_path(vault_opt)?, opts),
         Command::Get {
@@ -141,17 +175,24 @@ fn cmd_init(
         Vault::create(password.as_bytes(), m_cost, t_cost, p_cost).map_err(|e| e.to_string())?;
     let bytes = vault.save().map_err(|e| e.to_string())?;
     write_vault(path, &bytes)?;
+    // Seed a recoverable copy alongside the new vault (pre-1.0: never the only copy).
+    let bak = vault_backup_path(path);
+    if std::fs::copy(path, &bak).is_ok() {
+        eprintln!("Initial backup written to {}", bak.display());
+    }
     note_saved(&vault); // C16: seed the local anchor at the initial version
+    pre_release_notice();
     eprintln!("Created vault at {}", path.display());
     Ok(())
 }
 
-fn cmd_import(path: &Path, format: &str, source: &Path, opts: &OpenOpts) -> CmdResult {
+fn cmd_import(path: &Path, format: &str, source: &Path, yes: bool, opts: &OpenOpts) -> CmdResult {
     if format != "raw" {
         return Err(format!(
             "unknown import format {format:?} (only `raw` is supported)"
         ));
     }
+    pre_release_notice();
     let text = Zeroizing::new(
         std::fs::read_to_string(source)
             .map_err(|e| format!("cannot read {}: {e}", source.display()))?,
@@ -181,8 +222,17 @@ fn cmd_import(path: &Path, format: &str, source: &Path, opts: &OpenOpts) -> CmdR
         );
     }
 
-    if std::io::stdin().is_terminal() && !confirm("Import these into the vault?")? {
-        return Err("aborted".to_string());
+    let tty = std::io::stdin().is_terminal();
+    if !yes {
+        if tty {
+            if !confirm("Import these into the vault?")? {
+                return Err("aborted".to_string());
+            }
+        } else {
+            return Err(usage_err(
+                "piped/non-interactive import requires --yes (parsed entries shown above)",
+            ));
+        }
     }
 
     let password = prompt_password(false)?;
@@ -191,6 +241,7 @@ fn cmd_import(path: &Path, format: &str, source: &Path, opts: &OpenOpts) -> CmdR
     for entry in result.entries {
         vault.add_entry(entry);
     }
+    backup_vault_if_exists(path)?;
     let out = vault.save().map_err(|e| e.to_string())?;
     write_vault(path, &out)?;
     note_saved(&vault);
@@ -326,7 +377,11 @@ fn cmd_find(path: &Path, query: &str, stdout: bool, timeout: u64, opts: &OpenOpt
         let hits = vault.find(query, now);
         if hits.is_empty() {
             // Deliberately do NOT echo the query (C37 — queries are never logged).
-            return Err("no entry matches that search".to_string());
+            return Err(
+                "no entry matches that search (searches title, username, url, and tags only — \
+                 not passwords, notes, or secret fields; constraint C35)"
+                    .to_string(),
+            );
         }
         if stdout {
             for h in &hits {

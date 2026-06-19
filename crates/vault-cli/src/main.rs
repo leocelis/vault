@@ -64,6 +64,9 @@ enum Command {
         format: String,
         /// Source file to import.
         source: PathBuf,
+        /// Accept the parsed entries without prompting (required when stdin is not a TTY).
+        #[arg(long)]
+        yes: bool,
     },
     /// List or search entry titles (after unlock; in-memory only).
     Ls {
@@ -172,8 +175,17 @@ fn main() -> std::process::ExitCode {
     match commands::dispatch(cli.vault, &opts, cli.command) {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("vault: {e}");
-            std::process::ExitCode::FAILURE
+            let code = if e.starts_with(commands::USAGE_ERROR_PREFIX) {
+                8
+            } else {
+                1
+            };
+            let msg = e
+                .strip_prefix(commands::USAGE_ERROR_PREFIX)
+                .map(|s| s.trim_start())
+                .unwrap_or(&e);
+            eprintln!("vault: {msg}");
+            std::process::ExitCode::from(code)
         }
     }
 }

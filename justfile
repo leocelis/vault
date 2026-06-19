@@ -51,3 +51,7 @@ build-release:
 
 # Everything CI runs.
 ci: check audit
+
+# CP-7 audit readiness gate — release search benches + clippy + supply chain.
+audit-ready:
+    ./scripts/audit-readiness.sh

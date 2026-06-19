@@ -15,7 +15,7 @@ path = "src/main.rs"
 
 [dependencies]
 vault-core = { path = "../vault-core" }
-eframe = { workspace = true }   # re-exports egui; used via `eframe::egui`
+eframe = { workspace = true }   # UC-20: glow pinned in workspace; no persistence (C41)
 rfd = { workspace = true }
 zeroize = { workspace = true }
 getrandom = { workspace = true }   # entry-id randomness (same audited OS CSPRNG vault-core uses)

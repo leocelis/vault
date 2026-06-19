@@ -6,7 +6,7 @@
 # Reference: https://ivdframework.dev
 #
 # IVD rules applied in this artifact:
-#   Rule 1 — Intent Before Implementation: 39 constraints, HIGH density.
+#   Rule 1 — Intent Before Implementation: 60 constraints, HIGH density.
 #             Segmented implementation required (see implementation_notes).
 #   Rule 3 — Constraint Tests Are Mandatory: every constraint has a `test:` field.
 #   Rule 4 — Stress-Test Intent: constraint_satisfiability block documents all
@@ -41,12 +41,12 @@ meta:
   intent_type: "feature"        # scope: single deliverable, not system-level
   name: vault
   tagline: "Zero-plaintext · local-first · open-source credential vault"
-  version: "1.4.0"   # 1.1.0: C1 nonce_prefix fix · 1.2.0: C27-UI extension + GUI non-goal (UC-18) · 1.3.0: C28–C34 promotion + C2 ceiling/NFC + contradiction fixes · 1.4.0: Gate 0 close-out (G0.2 HMAC re-keying + master_seed binding, G0.3 upgrade-kdf full save, G0.6 clipboard helper, G0.7 YubiKey staleness, exit codes, C27 no-clipboard rule)
+  version: "1.7.0"   # 1.6.0: UC-21 C46–C54 · 1.7.0: UC-22 enterprise readiness (C55–C60)
   license: "MIT OR Apache-2.0"
   language: rust
-  ifscale_density: high         # IVD Rule 1: 39 constraints → segmented implementation
-  constraint_count: 34
-  constraint_groups: 11
+  ifscale_density: high         # IVD Rule 1: 60 constraints → segmented implementation
+  constraint_count: 60
+  constraint_groups: 15
   target_platforms:
     - x86_64-unknown-linux-musl
     - aarch64-apple-darwin
@@ -139,6 +139,9 @@ constraint_groups:
   G10: "AI-era threat resistance — CSPRNG credential generation and model-blind secret handling"
   G11: "Untrusted input and output robustness — hostile files, terminal output, exports"
   G12: "Search and discovery — fuzzy omni-search over non-secret metadata (UC-19)"
+  G13: "Desktop GUI shell — performance and presentation hardening (UC-20)"
+  G14: "Desktop GUI session hygiene and 2FA parity (UC-21)"
+  G15: "Enterprise readiness — audit prep and fleet deployment (UC-22)"
 
 # ──────────────────────────────────────────────────────────────────────────────
 constraints:
@@ -1694,13 +1697,297 @@ constraints:
       INTEGRATION: `find` (default) copies via the clipboard helper, not stdout;
         `find --stdout` lists titles only and contains no secret value.
 
+  # ── G13: Desktop GUI shell (UC-20) ────────────────────────────────────────
+  - id: C40
+    group: G13
+    title: "Desktop GUI uses reactive repaint only"
+    description: |
+      `vault-gui` MUST stay in egui's reactive repaint mode: the UI repaints on
+      input, focus changes, or an explicit `request_repaint` after a state change —
+      never in continuous every-frame mode. The only periodic repaint while unlocked
+      is the auto-lock idle timer, scheduled at most once per second via
+      `request_repaint_after(1s)` when `auto_lock_secs > 0`. With auto-lock
+      disabled, an idle unlocked window MUST NOT schedule repaints.
+    rationale: |
+      A credential utility is not a game loop. Continuous repaint burns CPU on every
+      machine and offers no security benefit. Reactive mode keeps idle cost near
+      zero while preserving instant response to typing and clicks.
+    sources:
+      - url: "docs/specs/UC-20-desktop-gui-hardening.md"
+        note: "§3.4 reactive invariants; egui README reactive mode"
+    test: |
+      REVIEW: `VaultApp::update` has no unconditional `request_repaint()` at the end
+        of the frame. INTEGRATION (manual or sampled): unlocked vault with
+        `auto_lock_secs = 0`, no input for 5 s → process CPU ~0%. With
+        `auto_lock_secs > 0`, the only periodic schedule is `request_repaint_after`
+        with a ≥1 s duration.
+
+  - id: C41
+    group: G13
+    title: "Desktop GUI renderer is lightweight or low-latency"
+    description: |
+      `vault-gui` MUST pin the **glow** OpenGL renderer in the workspace
+      `eframe` dependency (`default-features = false`, `features` include
+      `glow`, plus platform window features `wayland`/`x11` on Linux). The
+      `persistence` feature MUST NOT be enabled on `eframe` for `vault-gui` —
+      no UI state (queries, selection, window layout) is written to disk by the
+      framework. If the project later switches to the **wgpu** renderer (eframe
+      ≥0.34), `NativeOptions` MUST set
+      `desired_maximum_frame_latency: Some(1)` on the wgpu surface configuration.
+    rationale: |
+      glow keeps release binaries smaller and idle RAM lower on weak hardware —
+      the default posture for "fast on any machine." Disabling persistence closes a
+      metadata side-channel. Low-latency wgpu config is the documented upgrade path
+      when wgpu is chosen after benchmarking.
+    sources:
+      - url: "docs/specs/UC-20-desktop-gui-hardening.md"
+        note: "§3.1 renderer pin; eframe persistence feature"
+      - url: "https://docs.rs/eframe/latest/eframe/"
+        note: "glow vs wgpu features"
+    test: |
+      UNIT: workspace `Cargo.toml` `eframe` dependency lists `glow` and excludes
+        `persistence`. INTEGRATION: `cargo tree -p vault-gui -i eframe` resolves
+        through the glow backend. If wgpu is enabled in a future bump, a unit or
+        review test asserts `desired_maximum_frame_latency == Some(1)`.
+
+  - id: C42
+    group: G13
+    title: "Desktop GUI caches fuzzy search between repaints"
+    description: |
+      While the omni-search query string and the vault entry set are unchanged,
+      `vault-gui` MUST NOT call `Vault::find` again on incidental repaints (auto-lock
+      timer ticks, focus changes). Search results are recomputed only when the query
+      changes or entries are added, edited, removed, or imported. The cache is
+      cleared on lock.
+    rationale: |
+      Redundant fuzzy scans waste CPU without improving UX. C38 already bounds a
+      single scan; caching preserves that budget when the query is stable.
+    sources:
+      - url: "docs/specs/UC-20-desktop-gui-hardening.md"
+        note: "§3.2 SearchCache"
+    test: |
+      UNIT/INTEGRATION: with a fixed query and stable entry set, two consecutive
+        search resolutions return identical ordering without a second `find` call
+        (mock counter or test hook). Changing the query or mutating entries
+        invalidates the cache.
+
+  - id: C43
+    group: G13
+    title: "Desktop GUI virtualizes long entry lists"
+    description: |
+      When the filtered entry list exceeds **500** rows, `vault-gui` MUST lay out
+      and paint only the viewport-visible slice (plus a small margin), not every
+      row each frame. For N ≤ 500 the simple full-list path MAY remain. The
+      threshold is a named constant (`LIST_VIRTUALIZE_THRESHOLD = 500`).
+    rationale: |
+      egui `ScrollArea` lays out all children every frame; unbounded row count
+      breaks the frame budget on large vaults even when C38 keeps search fast.
+    sources:
+      - url: "docs/specs/UC-20-desktop-gui-hardening.md"
+        note: "§3.3 virtualization"
+      - url: "https://github.com/emilk/egui/blob/main/README.md"
+        note: "ScrollArea perf caveat"
+    test: |
+      INTEGRATION: with 600 synthetic entries displayed, row-layout/paint hooks
+        run for at most `LIST_VIRTUALIZE_THRESHOLD + margin` rows per frame (test
+        hook or debug counter). N ≤ 500 behavior unchanged.
+
+  - id: C44
+    group: G13
+    title: "Desktop GUI password fields are masked for display and accessibility"
+    description: |
+      Every `egui::TextEdit` that accepts a master password, entry password, or
+      OTP/base32 secret in `vault-gui` MUST use password masking (`.password(true)`
+      or equivalent) so glyphs are not rendered in plaintext and accessibility APIs
+      do not expose the typed value. On-screen reveal of an entry password remains
+      opt-in via the existing reveal toggle and MUST re-mask on hide.
+    rationale: |
+      GPU textures and accessibility bridges are presentation leak surfaces.
+      Default masking extends copy-not-display (C27) to the typing and screen-reader
+      paths.
+    sources:
+      - url: "docs/specs/UC-20-desktop-gui-hardening.md"
+        note: "§3.5 VG-S6"
+      - url: "research/ui_architecture.md"
+        note: "§1 secret-display boundary"
+    test: |
+      REVIEW: unlock, editor password, and OTP fields use `password(true)`.
+        INTEGRATION (manual a11y spot-check): VoiceOver/NVDA reads the field label,
+        not the secret characters, while typing.
+
+  - id: C45
+    group: G13
+    title: "Desktop GUI remains a thin shell over vault-core"
+    description: |
+      `vault-gui` MUST NOT import or call cryptographic primitives, format
+      parsers, envelope routines, or KDF functions directly. All unlock, search,
+      import, save, clipboard delivery, and audit operations go through `vault-core`
+      public APIs. Side effects that mutate the vault or touch secrets are collected
+      in an `Action` enum and executed after UI panel closures, never inside `egui`
+      widget closures.
+    rationale: |
+      Preserves the UC-18 audited boundary: one core, thin shells. Keeps borrow-safe
+      UI code from accidentally interleaving saves with layout.
+    sources:
+      - url: "docs/specs/UC-18-native-ui.md"
+        note: "§3.1 thin shell"
+      - url: "docs/specs/UC-20-desktop-gui-hardening.md"
+        note: "§3.6 frame workflow"
+    test: |
+      REVIEW: `vault-gui` has `#![forbid(unsafe_code)]` and no direct imports of
+        `chacha20poly1305`, `argon2`, or `vault_core::format` crypto modules.
+        `vault.save()` and `clip::copy` are not called inside `ui.add` closures.
+
+  # ── G14: Desktop GUI gaps closure (UC-21) ─────────────────────────────────
+  - id: C46
+    group: G14
+    title: "Desktop GUI time-boxes on-screen password reveal"
+    description: |
+      When the user toggles on-screen password reveal in `vault-gui`, the plaintext view
+      MUST auto re-mask within **15 seconds** (`REVEAL_TIMEOUT_SECS`). While reveal is
+      active, periodic repaint is limited to ≤1 Hz via `request_repaint_after(1s)`.
+    test: |
+      UNIT: `enforce_reveal_timeout` clears `reveal` after deadline. INTEGRATION test
+        in `uc21_constraints.rs` asserts wiring.
+
+  - id: C47
+    group: G14
+    title: "Desktop GUI optional lock on window blur"
+    description: |
+      `vault-gui` MUST support `lock_on_blur` in `~/.vault/config` (default **off**).
+      When enabled and the main viewport `focused == false`, the vault locks immediately.
+    test: |
+      UNIT: config round-trip for `lock_on_blur`. INTEGRATION: `enforce_focus_lock` wired.
+
+  - id: C48
+    group: G14
+    title: "Desktop GUI unlocks keyfile-2FA vaults"
+    description: |
+      When `Vault::requires_keyfile` is true, the unlock screen MUST offer keyfile path
+      selection and open via `Vault::open_keyfile`, or recovery via `Vault::open` with
+      the recovery code when the user selects recovery mode.
+    test: |
+      INTEGRATION: CLI keyfile test parity; GUI wiring test `c48_keyfile_unlock_wired`.
+
+  - id: C49
+    group: G14
+    title: "Desktop GUI enrolls keyfile 2FA"
+    description: |
+      From an unlocked non-2FA vault, `vault-gui` MUST offer keyfile enrollment mirroring
+      `vault enroll keyfile`: generate/adopt keyfile, `enroll_keyfile_2fa`, `save`, display
+      one-time recovery code in a modal.
+    test: |
+      UNIT: `recovery_code()` shape test. INTEGRATION: `c49_keyfile_enroll_wired`.
+
+  - id: C50
+    group: G14
+    title: "Desktop GUI shows pre-1.0 security notice"
+    description: |
+      Until dismissed, `vault-gui` shows a pre-1.0 audit warning banner after unlock.
+      Dismissal persists as `dismissed_pre10=1` in `~/.vault/config`.
+    test: |
+      INTEGRATION: `c50_pre10_banner_wired`.
+
+  - id: C51
+    group: G14
+    title: "Desktop GUI configurable clipboard clear timeout"
+    description: |
+      `clipboard_timeout_secs` in GUI config (choices 15/30/60; default 30). Copy status
+      MUST warn that clipboard is visible to other apps during the timeout.
+    test: |
+      INTEGRATION: `c51_clipboard_timeout_wired`; copy uses configured timeout.
+
+  - id: C52
+    group: G14
+    title: "Desktop GUI virtualizes lists above 100 rows"
+    description: |
+      `LIST_VIRTUALIZE_THRESHOLD` MUST be **100** (lowered from 500 in UC-20).
+    test: |
+      UNIT: `list_virtualize.rs` constant and slice tests.
+
+  - id: C53
+    group: G14
+    title: "Desktop GUI documents metadata-only search scope"
+    description: |
+      The omni-search field MUST state that search covers metadata only — never password
+      or note values (C35 reinforcement).
+    test: |
+      INTEGRATION: `c53_search_scope_hint`.
+
+  - id: C54
+    group: G14
+    title: "Desktop GUI password fields have explicit labels"
+    description: |
+      Every password `TextEdit` in unlock/enroll/editor flows MUST have a preceding
+      `ui.label(...)` for screen-reader discoverability (complements C44).
+    test: |
+      INTEGRATION: `c54_password_labels`; manual a11y spot-check NEEDS_REVIEW.
+
+  # ── G15: Enterprise readiness (UC-22) ─────────────────────────────────────
+  - id: C55
+    group: G15
+    title: "Audit readiness script passes on release toolchain"
+    description: |
+      `scripts/audit-readiness.sh` MUST exit 0 when run from a clean tree with the
+      project toolchain: release C38/C59 search tests, clippy `-D warnings`, and
+      `cargo audit` / `cargo deny check` when those tools are installed.
+    test: |
+      INTEGRATION: `./scripts/audit-readiness.sh` exits 0 on maintainer machine/CI.
+
+  - id: C56
+    group: G15
+    title: "Audit intake document exists"
+    description: |
+      `docs/AUDIT_READINESS.md` MUST list CP-7 review scope (format, KDF, memory,
+      FFI, AI-era delivery, GUI boundary) and point to constraint index + threat model.
+    test: |
+      REVIEW: file exists; linked from SECURITY.md.
+
+  - id: C57
+    group: G15
+    title: "Enterprise deployment environment variables"
+    description: |
+      `vault-gui` MUST honor `VAULT_VAULT_PATH` (vault file), `VAULT_CONFIG_DIR`
+      (config directory), and `VAULT_LOCK_ON_BLUR=1` (force lock-on-blur). Documented
+      in `docs/guides/enterprise-deployment.md`.
+    test: |
+      UNIT: `gui_config::resolve_vault_path` and env overrides wired;
+        `uc22_constraints.rs` grep tests.
+
+  - id: C58
+    group: G15
+    title: "C38 search benchmark runs in release only"
+    description: |
+      `latency_under_budget_at_scale` MUST return immediately in debug builds and
+      enforce the 100 ms budget only under `cargo test --release`.
+    test: |
+      UNIT: test body starts with `if cfg!(debug_assertions) { return; }`.
+
+  - id: C59
+    group: G15
+    title: "Search at N=5000 under 200 ms in release"
+    description: |
+      `latency_at_five_thousand` MUST pass with N=5000 and query probes under
+      **200 ms** each in release builds (enterprise-scale metadata search).
+    test: |
+      INTEGRATION: `cargo test -p vault-core --release latency_at_five_thousand`.
+
+  - id: C60
+    group: G15
+    title: "Enterprise posture documentation"
+    description: |
+      `docs/ENTERPRISE_POSTURE.md` and `docs/guides/enterprise-deployment.md` MUST
+      exist, state v1 non-goals (team vaults, SSO, SOC2), and list deployment hardening.
+    test: |
+      REVIEW: files exist; README or INSTALL links enterprise-deployment guide.
+
 # ──────────────────────────────────────────────────────────────────────────────
 constraint_satisfiability:
   # IVD Rule 6 — SATISFIABILITY CHECK
   # Required when 3 or more constraints exist. Documents every identified conflict,
   # its resolution, and binding priority ordering.
   # No constraint may be silently violated when it conflicts with another.
-  density: high  # 39 constraints, 12 groups
+  density: high  # 60 constraints, 15 groups
   conflicts_identified: 8
   conflicts:
 
@@ -1829,7 +2116,7 @@ constraint_satisfiability:
 
   all_constraints_simultaneously_satisfiable: true
   note: |
-    All 39 constraints are satisfiable in the Rust / libsodium / RustCrypto stack
+    All 60 constraints are satisfiable in the Rust / libsodium / RustCrypto stack
     described in vault/research/vault_spec.md. No cryptographic incompatibilities exist
     among the selected primitives (XChaCha20-Poly1305, Argon2id, HKDF-SHA-256, HMAC-SHA-256).
     The eight identified conflicts are resolved by explicit priority ordering above.
@@ -1843,11 +2130,17 @@ constraint_satisfiability:
     AEAD payload (no new key or index), C38 is a latency budget, and C39 reuses the C13/C27/C33
     clipboard path. They are consistent with SC2 (search is in-memory, no plaintext index) and
     introduce no new conflicts.
+    The UC-20 desktop GUI group (C40–C45, added 2026-06-18) adds no cryptographic primitives:
+    C40/C42/C43 are repaint and layout performance policy, C41 is a build/renderer configuration
+    rule, C44 extends C27's presentation boundary to password widgets and a11y, and C45 restates
+    the UC-18 thin-shell boundary for `vault-gui`. C42 complements C38 (cache avoids redundant
+    scans; C38 still bounds a single scan). C41's persistence ban complements C36/C17 (no extra
+    on-disk artifacts). No new conflicts identified.
 
 # ──────────────────────────────────────────────────────────────────────────────
 implementation_notes:
   segmentation_plan: |
-    IVD Rule 1 — HIGH constraint density (39 constraints) requires segmented
+    IVD Rule 1 — HIGH constraint density (45 constraints) requires segmented
     implementation. Implement one segment, re-read its constraints from disk,
     verify they all pass, then proceed to the next segment. Never implement
     across segments without verifying the preceding segment first.
@@ -1882,8 +2175,27 @@ implementation_notes:
       Note: C27's default-clipboard behavior depends on C13 (clipboard) being in place;
       sequence C27 after Segment 3. C26 depends only on OsRng (Segment 1 primitives).
 
+    SEGMENT 8 — Search and discovery (G12)
+      Implement and verify: C35, C36, C37, C38, C39
+      Re-read C35–C39 from disk before each sub-segment.
+
+    SEGMENT 9 — Desktop GUI shell (G13)
+      Implement and verify: C40, C41, C42, C43, C44, C45
+      Re-read C40–C45 from disk before each sub-segment.
+      Note: depends on UC-19 (C35–C39) and UC-18 shipped `vault-gui`; sequence after
+      Segments 7–8. C41 (glow pin) lands before C42/C43 perf work.
+
+    SEGMENT 10 — Desktop GUI gaps closure (G14)
+      Implement and verify: C46, C47, C48, C49, C50, C51, C52, C53, C54
+      Re-read C46–C54 from disk before each sub-segment.
+      Note: depends on Segment 9 (UC-20) and UC-09 keyfile APIs in vault-core.
+
+    SEGMENT 11 — Enterprise readiness (G15)
+      Implement and verify: C55, C56, C57, C58, C59, C60
+      Re-read C55–C60 from disk before each sub-segment.
+
     IVD Rule 2 — POST-IMPLEMENTATION AUDIT: Re-read this entire file from disk
-    (not from memory). For each of the 39 constraints, diff the implementation
+    (not from memory). For each of the 60 constraints, diff the implementation
     against the constraint and report: PASS / FAIL / NEEDS_REVIEW.
     Do not declare the implementation complete until every constraint is PASS
     or NEEDS_REVIEW with written justification. Undeclared FAILs are not acceptable.

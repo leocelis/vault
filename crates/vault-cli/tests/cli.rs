@@ -89,7 +89,10 @@ fn cli_end_to_end() {
     assert!(ok, "init failed: {err}");
 
     // import the messy sample
-    let (ok, _, err) = run(&["--vault", vs, "import", "--format", "raw", sp], pw);
+    let (ok, _, err) = run(
+        &["--vault", vs, "import", "--format", "raw", sp, "--yes"],
+        pw,
+    );
     assert!(ok, "import failed: {err}");
     assert!(err.contains("Imported"), "stderr: {err}");
 
@@ -173,7 +176,12 @@ fn cli_otp_requires_a_2fa_secret() {
     let sample = sample_path();
     let sp = sample.to_str().unwrap();
     assert_eq!(
-        run_env(&home, &["--vault", vs, "import", "--format", "raw", sp], pw).0,
+        run_env(
+            &home,
+            &["--vault", vs, "import", "--format", "raw", sp, "--yes"],
+            pw
+        )
+        .0,
         Some(0),
         "import"
     );
@@ -210,7 +218,12 @@ fn cli_find_fuzzy_lists_titles_and_never_leaks() {
     init.extend_from_slice(&fast);
     assert_eq!(run_env(&home, &init, pw).0, Some(0), "init");
     assert_eq!(
-        run_env(&home, &["--vault", vs, "import", "--format", "raw", sp], pw).0,
+        run_env(
+            &home,
+            &["--vault", vs, "import", "--format", "raw", sp, "--yes"],
+            pw
+        )
+        .0,
         Some(0),
         "import"
     );
@@ -238,8 +251,147 @@ fn cli_find_fuzzy_lists_titles_and_never_leaks() {
         !err.contains("zzgibberishzz"),
         "the query must never be echoed/logged (C37): {err}"
     );
+    assert!(
+        err.contains("C35") || err.to_lowercase().contains("not passwords"),
+        "no-match should explain searchable scope: {err}"
+    );
 
     let _ = std::fs::remove_file(&vault);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// UC-17 / UC-05: piped import must pass `--yes` explicitly (exit 8 otherwise).
+#[test]
+fn cli_import_non_tty_requires_yes() {
+    let home = unique_dir("import-yes-home");
+    let vault = unique_vault();
+    let vs = vault.to_str().unwrap();
+    let sample = sample_path();
+    let sp = sample.to_str().unwrap();
+    let pw = "import-yes-pass\n";
+    let fast = [
+        "--kdf-m-cost",
+        "8192",
+        "--kdf-t-cost",
+        "1",
+        "--kdf-p-cost",
+        "1",
+    ];
+
+    let mut init = vec!["--vault", vs, "init"];
+    init.extend_from_slice(&fast);
+    assert_eq!(run_env(&home, &init, pw).0, Some(0), "init");
+
+    let (code, _, err) = run_env(&home, &["--vault", vs, "import", "--format", "raw", sp], pw);
+    assert_eq!(
+        code,
+        Some(8),
+        "piped import without --yes should be a usage error: {err}"
+    );
+    assert!(err.contains("--yes"), "stderr should name the flag: {err}");
+
+    assert_eq!(
+        run_env(
+            &home,
+            &["--vault", vs, "import", "--format", "raw", sp, "--yes"],
+            pw,
+        )
+        .0,
+        Some(0),
+        "piped import with --yes should succeed"
+    );
+
+    let _ = std::fs::remove_file(&vault);
+    let _ = std::fs::remove_file(format!("{vs}.bak"));
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// C35: `vault find` never matches secret values or notes — metadata only.
+#[test]
+fn cli_find_does_not_search_secrets_or_notes() {
+    let home = unique_dir("find-c35-home");
+    let vault = unique_vault();
+    let vs = vault.to_str().unwrap();
+    let pw = "find-c35-pass\n";
+    let fast = [
+        "--kdf-m-cost",
+        "8192",
+        "--kdf-t-cost",
+        "1",
+        "--kdf-p-cost",
+        "1",
+    ];
+    let import_file = std::env::temp_dir().join(format!("vault-c35-{}.txt", std::process::id()));
+    std::fs::write(
+        &import_file,
+        "---\n\nsecret-entry\nONLY_IN_PASSWORD_XYZ\nnote: ONLY_IN_NOTES_ABC\n",
+    )
+    .unwrap();
+    let ip = import_file.to_str().unwrap();
+
+    let mut init = vec!["--vault", vs, "init"];
+    init.extend_from_slice(&fast);
+    assert_eq!(run_env(&home, &init, pw).0, Some(0), "init");
+    assert_eq!(
+        run_env(
+            &home,
+            &["--vault", vs, "import", "--format", "raw", ip, "--yes"],
+            pw,
+        )
+        .0,
+        Some(0),
+        "import"
+    );
+
+    for token in ["ONLY_IN_PASSWORD_XYZ", "ONLY_IN_NOTES_ABC"] {
+        let (code, out, err) = run_env(&home, &["--vault", vs, "find", token, "--stdout"], pw);
+        assert_ne!(
+            code,
+            Some(0),
+            "find must not match secret-adjacent content ({token}): out={out} err={err}"
+        );
+        assert!(
+            !out.contains(token),
+            "stdout must not leak the token: {out}"
+        );
+    }
+
+    let _ = std::fs::remove_file(&vault);
+    let _ = std::fs::remove_file(format!("{vs}.bak"));
+    let _ = std::fs::remove_file(&import_file);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// Pre-1.0 safety: `vault init` writes an initial `.bak` and prints the audit notice.
+#[test]
+fn cli_init_writes_initial_backup_and_notice() {
+    let home = unique_dir("init-bak-home");
+    let vault = unique_vault();
+    let vs = vault.to_str().unwrap();
+    let pw = "init-bak-pass\n";
+    let fast = [
+        "--kdf-m-cost",
+        "8192",
+        "--kdf-t-cost",
+        "1",
+        "--kdf-p-cost",
+        "1",
+    ];
+    let mut init = vec!["--vault", vs, "init"];
+    init.extend_from_slice(&fast);
+    let (code, _, err) = run_env(&home, &init, pw);
+    assert_eq!(code, Some(0), "init: {err}");
+    assert!(
+        Path::new(&format!("{vs}.bak")).exists(),
+        "init should seed vault.vlt.bak"
+    );
+    assert!(
+        err.contains("pre-1.0") || err.contains("backup"),
+        "init should warn about pre-1.0 / backup: {err}"
+    );
+
+    let _ = std::fs::remove_file(&vault);
+    let _ = std::fs::remove_file(format!("{vs}.bak"));
     let _ = std::fs::remove_dir_all(&home);
 }
 
@@ -334,7 +486,12 @@ fn cli_padding_toggle() {
     let sample = sample_path();
     let sp = sample.to_str().unwrap();
     assert_eq!(
-        run_env(&home, &["--vault", vs, "import", "--format", "raw", sp], pw).0,
+        run_env(
+            &home,
+            &["--vault", vs, "import", "--format", "raw", sp, "--yes"],
+            pw
+        )
+        .0,
         Some(0),
         "import"
     );

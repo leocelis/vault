@@ -66,4 +66,5 @@ the attacker to already have the unlocked master key, and social-engineering of 
 - **Fuzzed parsers** for all untrusted input.
 - **Reproducible builds + signed releases** (Sigstore/cosign + SLSA provenance) so you can verify
   what you run — see [docs/VERIFYING_RELEASES.md](docs/VERIFYING_RELEASES.md).
-- **An independent third-party audit before v1.0.**
+- **An independent third-party audit before v1.0.** Audit intake scope and maintainer
+  readiness checks: [docs/AUDIT_READINESS.md](docs/AUDIT_READINESS.md) (`just audit-ready`).
