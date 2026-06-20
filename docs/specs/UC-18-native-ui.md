@@ -1,6 +1,6 @@
 # UC-18 — Use the Vault Through a Fast, Native UI
 
-> **Tech spec** · Draft v0.1 · June 2026 · **Status: post-v1 (the core API decision it requires is v1)**
+> **Tech spec** · Implemented · June 2026 · **Status:** ✅ `vault-tui` + `vault-gui` shipped (pre-1.0 beta); SwiftUI/uniffi shell post-v1 (S-18)
 > **PRD:** [docs/PRD.md](../PRD.md) §5 UC-18 · **Constraints:** C20, C11, C12, C25, C27, C5, C23; candidate C-presentation
 > **Research:** [research/ui_architecture.md](../../research/ui_architecture.md)
 > Where this spec and [`vault_intent.yaml`](../../vault_intent.yaml) disagree, the intent wins.
@@ -8,9 +8,9 @@
 ## 1. Scope & goals
 
 A front-end that is *fast, simple, secure, and runs on this Mac as nicely as on Linux* — without
-duplicating or weakening the Rust security core. The UI itself is **post-v1** (intent `non_goals`:
-GUI is a future layer); the **one part of this spec that is v1** is making the CP-4 `vault-core`
-public API UI-agnostic and FFI-ready, so no UI ever has to fork the core.
+duplicating or weakening the Rust security core. **Pure-Rust TUI and egui GUI shells are shipped**
+(`vault-tui`, `vault-gui`). The **remaining post-v1 piece** is the native **SwiftUI** shell via uniffi
+(Touch ID / Secure Enclave). The v1 prerequisite — a UI-agnostic `vault-core` API — is in place.
 
 Goals:
 

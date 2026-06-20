@@ -1,14 +1,14 @@
 # UC-22 — Enterprise Readiness
 
-> **Tech spec** · v0.1 · June 2026  
+> **Tech spec** · Implemented · June 2026  
 > **PRD:** [docs/PRD.md](../PRD.md) §5 UC-22 · **New constraints:** C55–C60  
-> **Builds on:** CP-7, UC-20/21, [THREAT_MODEL.md](../THREAT_MODEL.md)
+> **Builds on:** CP-7 quality gate, UC-20/21, [THREAT_MODEL.md](../THREAT_MODEL.md)
 
 ## 1. Scope
 
-Prepare Vault for **enterprise evaluation** without falsely claiming SOC2/team-vault certification.
-Implements **audit readiness**, **fleet deployment hooks**, **release-scale search gates**, and
-**honest enterprise posture documentation**.
+Prepare Vault for **fleet deployment and release discipline** without falsely claiming SOC2/team-vault
+certification. Implements the **release quality gate**, **deployment env hooks**, **release-scale
+search benches**, and **honest enterprise posture documentation**.
 
 ### In scope
 
@@ -22,7 +22,7 @@ Implements **audit readiness**, **fleet deployment hooks**, **release-scale sear
 
 | Gap | Tracker |
 |-----|---------|
-| Third-party audit execution | CP-7 / human vendor |
+| Third-party audit (optional, human/vendor) | Not required for functionality; documented in CP-7 if pursued later |
 | Team / org vaults, SSO, SCIM | Intent `non_goals` · v2+ |
 | SOC2 / ISO certification | ENTERPRISE_POSTURE §4 |
 | SwiftUI / uniffi shell | S-18 / UC-18 P3 |

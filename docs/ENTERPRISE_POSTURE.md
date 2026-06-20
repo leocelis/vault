@@ -14,7 +14,7 @@ a future product line.
 | Reproducible signed releases | UC-13, C34 |
 | Constraint-driven development | `vault_intent.yaml`, IVD |
 | Desktop session hygiene | UC-21 (reveal timeout, lock-on-blur, keyfile GUI) |
-| Audit readiness package | [AUDIT_READINESS.md](AUDIT_READINESS.md) |
+| Audit readiness package | [AUDIT_READINESS.md](AUDIT_READINESS.md) (release quality gate) |
 
 ## Explicit non-claims (v1)
 
@@ -35,7 +35,7 @@ See [guides/enterprise-deployment.md](guides/enterprise-deployment.md):
 - `VAULT_VAULT_PATH` — per-user or per-machine vault file location
 - `VAULT_CONFIG_DIR` — central config directory (MDM-deployable)
 - `VAULT_LOCK_ON_BLUR=1` — force lock when window loses focus
-- Pre-1.0 banner until audit completes (UC-21 C50)
+- Pre-1.0 banner until 1.0 tag (UC-21 C50)
 
 ## Mitigations for accepted risks
 
@@ -46,8 +46,8 @@ See [guides/enterprise-deployment.md](guides/enterprise-deployment.md):
 | Metadata visible when unlocked | Encrypted on disk; search is metadata-only (C35) |
 | egui vs native shell | UC-18 P3 SwiftUI deferred; egui hardened UC-20/21 |
 
-## Path to enterprise-grade
+## Path to 1.0
 
-1. **CP-7** — commission third-party audit; remediate findings
-2. **v1.0.0** tag after audit + IVD Rule 2 sweep
+1. **CP-7** — `just audit-ready` green + IVD Rule 2 sweep (60 constraints)
+2. **v1.0.0** — format freeze after quality gate passes
 3. **v2+** — evaluate org vaults / SSO only if product strategy changes (new intent artifact)

@@ -1,6 +1,6 @@
 # UC-20 — Desktop GUI Performance & Security Hardening
 
-> **Tech spec** · Draft v0.1 · June 2026
+> **Tech spec** · Implemented · June 2026
 > **PRD:** [docs/PRD.md](../PRD.md) §5 UC-20 · **New constraints:** C40–C45; touches C20, C27, C30, C35, C38, C13
 > **Extends:** [UC-18](UC-18-native-ui.md) P2 (`vault-gui`) · **Shipped baseline:** `crates/vault-gui`
 > Where this spec and [`vault_intent.yaml`](../../vault_intent.yaml) disagree, the intent wins.

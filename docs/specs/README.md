@@ -31,7 +31,7 @@ plan and open questions.
 | [UC-19](UC-19-omni-search.md) | Fuzzy keyboard-first omni-search (CLI + GUI) | C35–C39 |
 | [UC-20](UC-20-desktop-gui-hardening.md) | Desktop GUI performance & security hardening (`vault-gui`) | C40–C45; C20, C27, C30, C35, C38 |
 | [UC-21](UC-21-desktop-gaps-closure.md) | Desktop gaps closure — session hygiene, keyfile GUI, trust UX | C46–C54; C27, C35, C44, UC-09 |
-| [UC-22](UC-22-enterprise-readiness.md) | Enterprise readiness — audit prep, fleet deploy, scale benches | C55–C60; C38, C39 |
+| [UC-22](UC-22-enterprise-readiness.md) | Fleet deploy & release quality gate | C55–C60; C38, C39 |
 
 ## Spec lifecycle
 

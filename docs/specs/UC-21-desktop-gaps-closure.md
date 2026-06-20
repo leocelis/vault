@@ -1,6 +1,6 @@
 # UC-21 — Desktop Gaps Closure
 
-> **Tech spec** · v0.1 · June 2026  
+> **Tech spec** · Implemented · June 2026  
 > **PRD:** [docs/PRD.md](../PRD.md) §5 UC-21 · **New constraints:** C46–C54  
 > **Builds on:** [UC-20](UC-20-desktop-gui-hardening.md) (C40–C45), [UC-09](UC-09-hardware-factors.md), [UC-18](UC-18-native-ui.md)
 
@@ -22,7 +22,7 @@ Closes **mitigable** gaps from the UC-20 post-ship review. Each gap is **fixed**
 
 ### Out of scope (deferred §7)
 
-SwiftUI shell, third-party audit, eframe 0.34 bump, search index at 10k+, private-title mode, eliminating clipboard.
+SwiftUI shell, eframe 0.34 bump, search index at 10k+, private-title mode, eliminating clipboard.
 
 ## 2. Proposed design
 

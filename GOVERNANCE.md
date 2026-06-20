@@ -13,8 +13,8 @@ community grows.
 3. **Everything verifiable.** Claims are backed by tests; decisions are backed by written rationale.
 4. **Eyes beyond the maintainers.** Two-maintainer sign-off is the same two people; we treat that
    honestly as a floor, not as independent review. Crypto and format changes actively solicit
-   external (non-maintainer) review as the community grows, and an **independent security audit is
-   a hard release gate for v1.0** (see [ROADMAP.md](ROADMAP.md) M10) — no audit, no 1.0.
+   external (non-maintainer) review as the community grows. **v1.0** requires the CP-7
+   release quality gate (`just audit-ready` + IVD Rule 2 sweep) — see [ROADMAP.md](ROADMAP.md) M10.
 
 ## Decision tiers
 

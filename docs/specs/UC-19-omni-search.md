@@ -1,6 +1,6 @@
 # UC-19 — Fuzzy Keyboard-First Omni-Search
 
-> **Tech spec** · Draft v0.1 · June 2026
+> **Tech spec** · Implemented · June 2026
 > **PRD:** [docs/PRD.md](../PRD.md) §5 UC-19 · **New constraints:** C35–C39; touches C12, C13, C19, C25, C27, C33
 > Where this spec and [`vault_intent.yaml`](../../vault_intent.yaml) disagree, the intent wins.
 

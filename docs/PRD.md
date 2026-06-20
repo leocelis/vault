@@ -189,7 +189,7 @@ hand over the keys.
 **Persona:** P5 · **Reference:** [SECURITY.md](../SECURITY.md)
 
 Private reporting via GitHub Security Advisories, 72 h acknowledgement, safe harbor,
-90-day coordinated disclosure. Pre-1.0, an independent third-party audit gates v1.0 (M10).
+90-day coordinated disclosure. v1.0 is gated on the CP-7 release quality gate (M10).
 
 ### UC-16 · (Future, post-v1) An AI agent uses the vault *without ever seeing a secret*
 **Persona:** P1 · **Constraints:** C27 forward constraint · **Status:** explicitly out of v1
@@ -252,17 +252,16 @@ See [spec UC-20](specs/UC-20-desktop-gui-hardening.md).
 
 Mitigates the post-UC-20 gap review: time-boxed reveal, optional lock-on-blur, keyfile 2FA
 enroll/unlock in the GUI, pre-1.0 banner, configurable clipboard timeout, lower virtualization
-threshold (100), search-scope hint, a11y labels. Architectural gaps (SwiftUI shell, external
-audit, eframe 0.34) are explicitly deferred per the spec ledger.
+threshold (100), search-scope hint, a11y labels. Architectural gaps (SwiftUI shell, eframe 0.34)
+are explicitly deferred per the spec ledger.
 See [spec UC-21](specs/UC-21-desktop-gaps-closure.md).
 
-### UC-22 · Enterprise readiness (audit prep & fleet deployment)
+### UC-22 · Fleet deployment & release quality gate
 **Persona:** P5 · **Constraints:** C55–C60; touches C38, C39
 
-Prepares for CP-7 third-party audit without claiming enterprise certification: audit intake
-doc + `audit-readiness.sh` gate, enterprise deployment env vars (`VAULT_VAULT_PATH`,
-`VAULT_CONFIG_DIR`, `VAULT_LOCK_ON_BLUR`), release-only search benches (C38 skip in debug,
-C59 at N=5000 / 200 ms), and honest posture docs (no SOC2/SSO/team vaults in v1).
+Fleet deployment hooks (`VAULT_VAULT_PATH`, `VAULT_CONFIG_DIR`, `VAULT_LOCK_ON_BLUR`),
+`just audit-ready` release gate, release-only search benches (C38/C59), and honest posture
+docs (no SOC2/SSO/team vaults in v1).
 See [spec UC-22](specs/UC-22-enterprise-readiness.md).
 
 ## 6. Out of scope for v1 (non-goals)

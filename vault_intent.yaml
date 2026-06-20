@@ -141,7 +141,7 @@ constraint_groups:
   G12: "Search and discovery — fuzzy omni-search over non-secret metadata (UC-19)"
   G13: "Desktop GUI shell — performance and presentation hardening (UC-20)"
   G14: "Desktop GUI session hygiene and 2FA parity (UC-21)"
-  G15: "Enterprise readiness — audit prep and fleet deployment (UC-22)"
+  G15: "Fleet deployment and release quality gate (UC-22)"
 
 # ──────────────────────────────────────────────────────────────────────────────
 constraints:
@@ -2140,7 +2140,7 @@ constraint_satisfiability:
 # ──────────────────────────────────────────────────────────────────────────────
 implementation_notes:
   segmentation_plan: |
-    IVD Rule 1 — HIGH constraint density (45 constraints) requires segmented
+    IVD Rule 1 — HIGH constraint density (60 constraints) requires segmented
     implementation. Implement one segment, re-read its constraints from disk,
     verify they all pass, then proceed to the next segment. Never implement
     across segments without verifying the preceding segment first.
