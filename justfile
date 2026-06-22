@@ -49,6 +49,10 @@ bench:
 build-release:
     cargo build --release --locked
 
+# Assert byte-identical release builds (C34 — same as CI reproducible job).
+reproduce:
+    ./scripts/reproducible-build.sh
+
 # Everything CI runs.
 ci: check audit
 

@@ -7,6 +7,8 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- **CP-6 distribution trust:** reproducible release env in `release.yml`, in-pipeline cosign
+  verify, vendor tarball, crates.io Trusted Publishing job, `just reproduce`, release docs.
 - **`vault lock` (CP-5):** clears clipboard and documents per-process CLI session model (UC-06 §3.4).
 - **`vault export --format json` (S-6 / UC-05):** full-vault plaintext JSON to stdout with frozen
   warning, TTY confirmation or `--yes`, strict serde_json encoding (C29), integration tests.

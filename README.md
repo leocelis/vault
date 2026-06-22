@@ -72,7 +72,7 @@ Full rationale: [docs/CRYPTO.md](docs/CRYPTO.md) · Format: [docs/FILE_FORMAT.md
 ## Quickstart
 
 ```sh
-# Build from source (not yet published to crates.io); produces one static binary, no runtime deps.
+# Build from source or `cargo install vault-cli --locked`; produces one static binary, no runtime deps.
 cargo build --release -p vault-cli
 alias vault=target/release/vault
 

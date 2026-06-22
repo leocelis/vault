@@ -6,7 +6,8 @@ coordinated disclosure. Thank you for helping keep Vault and its users safe.
 ## Supported versions
 
 Vault is **functional pre-1.0** — the CLI and desktop app work today, but the on-disk format may
-still change before `1.0.0` and there is no crates.io release yet. Once we ship versioned releases,
+still change before `1.0.0`. Signed GitHub Releases and crates.io (`cargo install vault-cli --locked`)
+ship from tag push — see [docs/RELEASE.md](docs/RELEASE.md). Once we ship versioned releases,
 this section will list supported version ranges. Until then, `main` is the development branch and
 bug reports are welcome against it.
 

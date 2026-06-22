@@ -7,6 +7,7 @@ license.workspace = true
 readme.workspace = true
 repository.workspace = true
 description = "Vault — a simple, fast, secure desktop app (egui shell over vault-core)."
+publish = false
 
 # A thin UC-18 shell: all secret-touching logic stays in `vault-core`; this binary only renders
 # metadata, orchestrates clipboard delivery (model-blind), and persists via the core's save path.

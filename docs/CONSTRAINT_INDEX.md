@@ -25,7 +25,7 @@ just audit-ready    # release search benches + clippy (C55)
 | C23, C24 | `crates/vault-cli/tests/constraint_policy.rs` | Zero network + OSS license |
 | C26 | `crates/vault-core/src/gen.rs` | CSPRNG generator |
 | C27–C31 | `crates/vault-cli/tests/cli.rs` | Model-blind + argv |
-| C34 | `scripts/reproducible-build.sh`, `.github/workflows/` | Release trust |
+| C34 | `scripts/reproducible-build.sh`, `.github/workflows/release.yml`, `scripts/publish-crates.sh` | Release trust + crates.io |
 | C35–C39 | `crates/vault-core/src/search.rs`, `frecency.rs`, CLI `find` tests | Omni-search |
 | C40–C45 | `crates/vault-gui/tests/uc20_constraints.rs` | Desktop hardening |
 | C46–C54 | `crates/vault-gui/tests/uc21_constraints.rs` | Session hygiene + keyfile GUI |

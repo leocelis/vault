@@ -9,6 +9,7 @@ readme.workspace = true
 repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
+publish = false
 
 # Installed as `vault-tui`; a thin shell — all secret-touching logic stays in vault-core.
 [[bin]]

@@ -28,10 +28,17 @@ jobs:
           - { os: macos-latest,   target: x86_64-apple-darwin }
           - { os: windows-latest, target: x86_64-pc-windows-msvc }
     runs-on: ${{ matrix.os }}
+    env:
+      CARGO_INCREMENTAL: "0"
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
       - name: Install pinned toolchain (rust-toolchain.toml — C34 reproducibility)
         run: rustup toolchain install
+      - name: Reproducible build environment (UC-13 §3.1)
+        shell: bash
+        run: |
+          echo "SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)" >> "$GITHUB_ENV"
+          echo "RUSTFLAGS=--remap-path-prefix=${{ github.workspace }}=/vault --remap-path-prefix=${HOME}/.cargo=/cargo" >> "$GITHUB_ENV"
       - run: rustup target add ${{ matrix.target }}
       - name: Install cargo-auditable (embedded SBOM — UC-13 §3.4)
         run: cargo install cargo-auditable auditable2cdx --locked
@@ -53,6 +60,18 @@ jobs:
           bin=$(ls dist/vault-x86_64-unknown-linux-musl* | head -1)
           auditable2cdx "$bin" > "dist/vault-${{ github.ref_name }}.cdx.json"
           cd dist && shasum -a 256 vault-${{ github.ref_name }}.cdx.json >> SHA256SUMS-x86_64-unknown-linux-musl.txt
+      - name: Static musl check (C20)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: |
+          bin=$(ls dist/vault-x86_64-unknown-linux-musl* | head -1)
+          file "$bin"
+          ldd "$bin" 2>&1 | grep -q "not a dynamic executable"
+      - name: Vendor tarball (offline rebuild — UC-13 §3.1)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: |
+          cargo vendor vendor
+          tar czf "dist/vault-${{ github.ref_name }}-vendor.tar.gz" vendor
+          cd dist && shasum -a 256 "vault-${{ github.ref_name }}-vendor.tar.gz" >> SHA256SUMS-x86_64-unknown-linux-musl.txt
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: dist-${{ matrix.target }}
@@ -106,9 +125,29 @@ jobs:
             dist/*.sig
             dist/*.pem
 
+  verify:
+    # UC-13 §6: a release that fails its own verification instructions never ships.
+    name: verify signatures + musl static (C34)
+    needs: sign-and-draft
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with: { path: dist, merge-multiple: true }
+      - name: Install cosign
+        uses: sigstore/cosign-installer@f713795cb21599bc4e5c4b58cbad1da852d7eeb9 # v3
+      - name: cosign verify-blob (canonical musl binary)
+        run: |
+          bin="dist/vault-x86_64-unknown-linux-musl"
+          test -f "$bin" && test -f "$bin.pem" && test -f "$bin.sig"
+          cosign verify-blob "$bin" \
+            --certificate "$bin.pem" \
+            --signature "$bin.sig" \
+            --certificate-identity-regexp 'https://github.com/leocelis/vault/.github/workflows/release.yml@.*' \
+            --certificate-oidc-issuer 'https://token.actions.githubusercontent.com'
+
   provenance:
     name: SLSA build provenance
-    needs: [hashes, sign-and-draft]
+    needs: [hashes, sign-and-draft, verify]
     permissions:
       actions: read
       id-token: write
@@ -124,7 +163,7 @@ jobs:
     # C34 fail-closed: only after signing AND provenance both succeeded does the release
     # become public, with the attestation attached.
     name: attach provenance + publish
-    needs: [sign-and-draft, provenance]
+    needs: [sign-and-draft, provenance, verify]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -140,3 +179,22 @@ jobs:
           ls -l prov
           gh release upload "$TAG" prov/*.intoto.jsonl
           gh release edit "$TAG" --draft=false
+
+  publish-crates:
+    name: crates.io Trusted Publishing (UC-13 §3.6)
+    needs: finalize
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - name: Install pinned toolchain
+        run: rustup toolchain install
+      - name: Verify tag matches Cargo.toml version
+        run: ./scripts/check-release-version.sh "${{ github.ref_name }}"
+      - uses: rust-lang/crates-io-auth-action@63a7064947ceca9989005e118db3a5fecdc9259f # v1.0.0
+        id: auth
+      - name: Publish workspace crates (dependency order)
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: ./scripts/publish-crates.sh

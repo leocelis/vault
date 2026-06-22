@@ -1,8 +1,9 @@
 # Installation
 
-> **Status:** functional pre-1.0 — build from source or install via `cargo install --git`.
-> Pre-built signed binaries ship on [GitHub Releases](https://github.com/vault/releases)
-> when a version tag is pushed. There is no [crates.io](https://crates.io) publish yet.
+> **Status:** functional pre-1.0 — build from source, `cargo install vault-cli`, or download
+> [signed GitHub Releases](https://github.com/leocelis/vault/releases) after tagging.
+> crates.io publish runs automatically via Trusted Publishing on tag push
+> ([CRATES_IO_TRUSTED_PUBLISHING.md](CRATES_IO_TRUSTED_PUBLISHING.md)).
 
 ## Quick install (recommended)
 
@@ -17,13 +18,21 @@ cd vault
 
 Ensure `~/.local/bin` is on your `PATH`.
 
-## Install from Git without cloning (interim until crates.io)
+## Install from crates.io
+
+After the first manual publish + Trusted Publishing setup:
+
+```sh
+cargo install vault-cli --locked
+```
+
+Verify release binaries with [VERIFYING_RELEASES.md](VERIFYING_RELEASES.md) — that path is stronger than `cargo install` alone.
+
+## Install from Git without cloning
 
 ```sh
 cargo install --git https://github.com/leocelis/vault.git --locked vault-cli
 ```
-
-Produces one statically-linked binary when built with the project's pinned toolchain.
 
 ## Build from source (manual)
 
@@ -44,7 +53,7 @@ ldd target/x86_64-unknown-linux-musl/release/vault   # → "not a dynamic execut
 
 ## Pre-built binaries
 
-When available, download from [GitHub Releases](https://github.com/vault/releases), then
+When available, download from [GitHub Releases](https://github.com/leocelis/vault/releases), then
 **verify the signature and checksum** before running — see [VERIFYING_RELEASES.md](VERIFYING_RELEASES.md).
 
 ## Supported platforms

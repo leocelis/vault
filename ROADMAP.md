@@ -77,10 +77,11 @@ lane can build against from that point on.
 - Non-TTY behavior matrix; no secrets on argv; musl static build verified
 - **Freezes:** CLI surface & exit codes (scripts can rely on them)
 
-### CP-6 · Distribution & trust *(M8)*
+### CP-6 · Distribution & trust *(M8)* ✅
 `C3 C23 C24 C34` · spec [UC-13](docs/specs/UC-13-verifiable-releases.md)
-- Reproducible builds (`--locked`, remap-path-prefix) · cosign keyless · SLSA provenance (fixed per G0.5)
-- `cargo auditable` embedded SBOM + CycloneDX sidecar · crates.io Trusted Publishing
+- Reproducible builds (`SOURCE_DATE_EPOCH`, `--remap-path-prefix`, `--locked`) · cosign keyless · SLSA provenance
+- `cargo auditable` embedded SBOM + CycloneDX sidecar · vendor tarball · in-pipeline cosign verify
+- crates.io Trusted Publishing ([docs/CRATES_IO_TRUSTED_PUBLISHING.md](docs/CRATES_IO_TRUSTED_PUBLISHING.md))
 
 ### CP-7 · Full IVD sweep → release quality gate → v1.0 *(M10)*
 - IVD Rule 2 sweep: all 60 constraints, PASS/FAIL/NEEDS_REVIEW; [`docs/CONSTRAINT_INDEX.md`](docs/CONSTRAINT_INDEX.md) complete
