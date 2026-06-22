@@ -14,6 +14,7 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
+mod clipboard;
 mod commands;
 mod export;
 mod terminal;

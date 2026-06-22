@@ -268,7 +268,7 @@ fn cmd_ls(path: &Path, search: Option<&str>, opts: &OpenOpts) -> CmdResult {
         return Ok(());
     }
     for e in entries {
-        // Titles are user/import-controlled → sanitize before the terminal (C30).
+        // Titles are user/import-controlled → sanitize before the terminal (C28).
         println!("{}", sanitize(&e.title));
     }
     Ok(())
@@ -361,13 +361,14 @@ fn cmd_get(
     let secret = entry.password.expose(); // owned, zeroizing (decrypt-on-access, C19)
 
     if stdout {
-        // C27: explicit, warned opt-in.
+        // C27: explicit, warned opt-in. C28: sanitize before the terminal.
         eprintln!(
             "WARNING: plaintext written to stdout; ensure no AI agent or untrusted process \
              captures this stream."
         );
+        let rendered = sanitize(&String::from_utf8_lossy(&secret));
         std::io::stdout()
-            .write_all(&secret)
+            .write_all(rendered.as_bytes())
             .and_then(|_| std::io::stdout().write_all(b"\n"))
             .map_err(|e| e.to_string())?;
     } else {
@@ -416,7 +417,7 @@ fn cmd_find(path: &Path, query: &str, stdout: bool, timeout: u64, opts: &OpenOpt
         }
         if stdout {
             for h in &hits {
-                // Titles are user/import-controlled → sanitize before the terminal (C30).
+                // Titles are user/import-controlled → sanitize before the terminal (C28).
                 println!("{}", sanitize(&h.entry.title));
             }
             return Ok(());
@@ -1193,11 +1194,7 @@ fn run_clipboard_holder(secs: u64) -> CmdResult {
     std::thread::sleep(std::time::Duration::from_secs(secs));
     if let Some(cur) = read_clipboard() {
         let cur = Zeroizing::new(cur);
-        let (cur_s, sec_s): (&[u8], &[u8]) = (&cur, &secret);
-        let unchanged = cur_s == sec_s
-            || cur_s.strip_suffix(b"\n") == Some(sec_s)
-            || cur_s.strip_suffix(b"\r\n") == Some(sec_s);
-        if unchanged {
+        if crate::clipboard::clipboard_still_ours(&cur, &secret) {
             let _ = copy_to_clipboard(&[]); // clear — still ours
         }
     }

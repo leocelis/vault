@@ -856,3 +856,104 @@ fn vault_password_file_env_unlocks() {
 
     let _ = std::fs::remove_file(&vault);
 }
+
+fn fast_kdf() -> [&'static str; 6] {
+    [
+        "--kdf-m-cost",
+        "8192",
+        "--kdf-t-cost",
+        "1",
+        "--kdf-p-cost",
+        "1",
+    ]
+}
+
+fn init_vault(home: &Path, vault: &Path, pw: &str) {
+    let vs = vault.to_str().unwrap();
+    let mut args = vec!["--vault", vs, "init", "--allow-weak-password"];
+    args.extend_from_slice(&fast_kdf());
+    assert_eq!(run_env(home, &args, pw).0, Some(0), "init");
+}
+
+/// C28: imported entry titles with ANSI/control bytes must not reach the terminal raw.
+#[test]
+fn c28_ls_sanitizes_evil_title() {
+    let home = unique_dir("c28-ls-home");
+    let vault = unique_vault();
+    let vs = vault.to_str().unwrap();
+    let pw = "c28-pass\n";
+    init_vault(&home, &vault, pw);
+
+    let evil = std::env::temp_dir().join(format!("vault-c28-ls-{}.txt", std::process::id()));
+    std::fs::write(
+        &evil,
+        b"evil\x1b[31mname\nghp_FAKE0mZ9xQ2vL7nR4tW8pY1aB3cD5eF6gH7iJ\n",
+    )
+    .unwrap();
+    let ep = evil.to_str().unwrap();
+    assert_eq!(
+        run_env(
+            &home,
+            &["--vault", vs, "import", "--format", "raw", ep, "--yes"],
+            pw
+        )
+        .0,
+        Some(0),
+        "import"
+    );
+
+    let (_, out, _) = run_env(&home, &["--vault", vs, "ls"], pw);
+    assert!(
+        !out.as_bytes().contains(&0x1b),
+        "raw ESC must not appear in ls output: {out:?}"
+    );
+    assert!(out.contains("\\x1b"), "ls: {out}");
+
+    let _ = std::fs::remove_file(&evil);
+    let _ = std::fs::remove_file(&vault);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// C28: `get --stdout` must sanitize secret bytes before writing to stdout.
+#[test]
+fn c28_get_stdout_sanitizes_ansi_in_password() {
+    let home = unique_dir("c28-get-home");
+    let vault = unique_vault();
+    let vs = vault.to_str().unwrap();
+    let pw = "c28-get-pass\n";
+    init_vault(&home, &vault, pw);
+
+    let evil = std::env::temp_dir().join(format!("vault-c28-get-{}.txt", std::process::id()));
+    std::fs::write(&evil, b"ansi_entry\nghp_FAKE0mZ9\x1b[31mword\n").unwrap();
+    let ep = evil.to_str().unwrap();
+    assert_eq!(
+        run_env(
+            &home,
+            &["--vault", vs, "import", "--format", "raw", ep, "--yes"],
+            pw
+        )
+        .0,
+        Some(0),
+        "import"
+    );
+
+    let (_, out, _) = run_env(&home, &["--vault", vs, "get", "ansi_entry", "--stdout"], pw);
+    assert!(
+        !out.as_bytes().contains(&0x1b),
+        "raw ESC must not appear in get --stdout: {out:?}"
+    );
+    assert!(out.contains("\\x1b"), "get: {out}");
+
+    let _ = std::fs::remove_file(&evil);
+    let _ = std::fs::remove_file(&vault);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// C13: detached helper subcommand accepts stdin and exits promptly when timeout is 0.
+#[test]
+fn c13_hold_clipboard_zero_exits_immediately() {
+    let home = unique_dir("c13-home");
+    let (code, _, err) = run_env(&home, &["hold-clipboard", "0"], "clip-secret");
+    assert_eq!(code, Some(0), "stderr: {err}");
+    let _ = std::fs::remove_dir_all(&home);
+}

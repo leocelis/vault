@@ -93,13 +93,18 @@ fn cp7_sweep_lists_all_sixty_constraints() {
     assert_eq!(needs_review, 3);
 
     for (id, status) in CP7_SWEEP {
+        let needle = format!("| {id} |");
+        let row_start = text
+            .find(&needle)
+            .unwrap_or_else(|| panic!("CONSTRAINT_INDEX.md missing sweep row for {id}"));
+        let row_end = text[row_start..]
+            .find('\n')
+            .map(|i| row_start + i)
+            .unwrap_or(text.len());
+        let row = &text[row_start..row_end];
         assert!(
-            text.contains(&format!("| {id} |")),
-            "CONSTRAINT_INDEX.md missing sweep row for {id}"
-        );
-        assert!(
-            text.contains(status),
-            "CONSTRAINT_INDEX.md missing status {status} for {id}"
+            row.contains(&format!("| {status} |")),
+            "row for {id} should contain status {status}: {row}"
         );
     }
 }
@@ -111,6 +116,7 @@ fn distributed_test_suites_exist() {
         "crates/vault-cli/tests/cli.rs",
         "crates/vault-cli/tests/constraint_policy.rs",
         "crates/vault-cli/src/terminal.rs",
+        "crates/vault-cli/src/clipboard.rs",
         "crates/vault-core/tests/robustness.rs",
         "crates/vault-core/tests/constraint_gaps.rs",
         "crates/vault-hardware/tests/constraint_hardware.rs",

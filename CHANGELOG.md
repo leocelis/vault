@@ -7,6 +7,9 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- **CP-7 review fixes:** C28 preserves `\n`/`\t`, sanitizes `get --stdout`, ls/get integration tests;
+  C13 `clipboard.rs` clear-iff-unchanged unit tests + hold-clipboard integration; tighter sweep
+  row assertions; C29 labeled JSON-only (v1).
 - **CP-7 IVD sweep:** full C1–C60 PASS/NEEDS_REVIEW table in `docs/CONSTRAINT_INDEX.md`
   (57 PASS, 3 NEEDS_REVIEW); `audit-readiness.sh` runs workspace tests + fmt check;
   C28 terminal sanitize module + named tests; C29 export JSON test; constraint index tests.

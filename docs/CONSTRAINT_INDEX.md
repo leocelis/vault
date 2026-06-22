@@ -27,7 +27,7 @@ just audit-ready    # release search benches + workspace tests + fmt + clippy (C
 | C10 | HmacBlockStream | PASS | block stream tests + fuzz |
 | C11 | mlock / locked memory | PASS | `memory/` unit tests |
 | C12 | Zeroize on drop | PASS | `memory/` + `vault-sys` |
-| C13 | Timed clipboard clear (helper) | PASS | CLI clipboard integration in `cli.rs` |
+| C13 | Timed clipboard clear (helper) | PASS | `clipboard.rs` (`c13_*`), `cli.rs` hold-clipboard integration |
 | C14 | FIDO2 PRF stanza (libfido2) | NEEDS_REVIEW | Salt/HKDF unit tests; no live CTAP2 integration |
 | C15 | TPM PCR-sealed stanza + re-enroll | NEEDS_REVIEW | Policy/help strings; `vault enroll-tpm` not implemented |
 | C16 | Monotonic vault_version + rollback warn | PASS | `rollback/`, `vault.rs` tests |
@@ -42,8 +42,8 @@ just audit-ready    # release search benches + workspace tests + fmt + clippy (C
 | C25 | Constant-time secret compare | PASS | `memory/` + clipboard helper |
 | C26 | CSPRNG generation | PASS | `gen.rs` unit tests |
 | C27 | Model-blind retrieval (no plaintext to agent) | PASS | `cli.rs` get/clip paths |
-| C28 | Terminal output sanitization | PASS | `terminal.rs` (`c28_*`), `commands/mod.rs` |
-| C29 | Export JSON/CSV injection hardening | PASS | `export.rs` (`c29_*`), `cli.rs` export integration |
+| C28 | Terminal output sanitization | PASS | `terminal.rs` (`c28_*`), `cli.rs` ls/get integration |
+| C29 | Export JSON injection hardening (v1 JSON only) | PASS | `export.rs` (`c29_*`), `cli.rs` export integration |
 | C30 | Parser forbid(unsafe) + fuzz CI | PASS | `lib.rs`, fuzz harnesses, CI |
 | C31 | No secrets on argv | PASS | `cli.rs` argv rejection tests |
 | C32 | Atomic durable saves + flock | PASS | `vault.rs` save tests |
@@ -90,7 +90,7 @@ just audit-ready    # release search benches + workspace tests + fmt + clippy (C
 | C1–C3 | `crates/vault-core/src/crypto/`, `tests/constraint_gaps.rs` (`c3_*`) | Crypto + supply-chain policy |
 | C4, C6 | `crates/vault-core/tests/constraint_gaps.rs`, `envelope/` unit tests | Data key + re-wrap |
 | C7–C10, C30 | `crates/vault-core/src/format/`, `tests/robustness.rs`, `fuzz/` | Parser hardening |
-| C11–C13, C25, C33 | `crates/vault-core/src/memory/`, CLI clipboard paths | Memory + delivery |
+| C11–C13, C25, C33 | `crates/vault-core/src/memory/`, `clipboard.rs`, CLI clipboard paths | Memory + delivery |
 | C14, C15 | `crates/vault-hardware/tests/constraint_hardware.rs`, `fido2_salt`, `tpm_policy` | FIDO2 recipe + TPM policy |
 | C16, C32 | `crates/vault-core/src/rollback/`, `vault.rs` tests | Rollback + atomic save |
 | C17 | `crates/vault-core/tests/constraint_gaps.rs` (`c17_*`) | Single opaque blob |
@@ -112,7 +112,7 @@ just audit-ready    # release search benches + workspace tests + fmt + clippy (C
 
 ## Test methodology notes
 
-- **C28 / C29** — named unit tests in `terminal.rs` and `export.rs`.
+- **C28 / C29 / C13** — named unit tests plus `cli.rs` integration for ls/get sanitize and hold-clipboard.
 - **C40–C54** — `uc20`/`uc21` tests are **static wiring** checks (source grep), not live GUI oracles.
 - **C34** — reproducible build verified in CI `reproducible` job; release signing in `release.yml`.
 
