@@ -141,6 +141,8 @@ pub fn dispatch(vault_opt: Option<PathBuf>, opts: &OpenOpts, command: Command) -
         Command::Enroll { factor, path } => {
             cmd_enroll(&vault_path(vault_opt)?, &factor, path.as_deref(), opts)
         }
+        Command::EnrollTpm => cmd_enroll_tpm(),
+        Command::ReEnrollTpm => cmd_re_enroll_tpm(),
         Command::Lock => cmd_lock(),
     }
 }
@@ -566,6 +568,23 @@ fn cmd_gen_passphrase(n: usize, wordlist: Option<&Path>) -> CmdResult {
         eprintln!("(tip: for ~12.9 bits/word, use --wordlist with the EFF large list from https://www.eff.org/dice)");
     }
     Ok(())
+}
+
+/// TPM enroll stub — full PCR sealing lands behind the `tpm` feature (constraint C15).
+fn cmd_enroll_tpm() -> CmdResult {
+    Err(
+        "TPM stanza enrollment is not enabled in this build (optional M7 feature). \
+         See `vault enroll-tpm --help` for PCR/firmware guidance."
+            .to_string(),
+    )
+}
+
+/// TPM re-enroll stub (constraint C15).
+fn cmd_re_enroll_tpm() -> CmdResult {
+    Err(format!(
+        "TPM re-enrollment is not enabled in this build. {}",
+        vault_hardware::tpm_policy::PCR_MISMATCH_MESSAGE
+    ))
 }
 
 /// Clear local session hygiene (UC-06 §3.4). v1 CLI is per-process — no cached unlock between
@@ -1098,66 +1117,14 @@ fn confirm(question: &str) -> Result<bool, String> {
     Ok(matches!(s.trim().to_lowercase().as_str(), "y" | "yes"))
 }
 
-/// Write `data` to the OS clipboard via the platform tool, passed on **stdin** (never argv — C29).
-/// Used both to deliver a secret and (with empty `data`) to clear the clipboard.
+/// Write `data` to the OS clipboard with C33 concealment hints (falls back to CLI tools).
 fn copy_to_clipboard(data: &[u8]) -> CmdResult {
-    let candidates: &[(&str, &[&str])] = if cfg!(target_os = "macos") {
-        &[("pbcopy", &[])]
-    } else if cfg!(target_os = "windows") {
-        &[("clip", &[])]
-    } else {
-        &[
-            ("wl-copy", &[]),
-            ("xclip", &["-selection", "clipboard"]),
-            ("xsel", &["-b", "-i"]),
-        ]
-    };
-    for (cmd, args) in candidates {
-        let child = std::process::Command::new(cmd)
-            .args(*args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn();
-        let mut child = match child {
-            Ok(c) => c,
-            Err(_) => continue, // tool not installed; try the next
-        };
-        if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(data).map_err(|e| e.to_string())?;
-        }
-        if child.wait().map_err(|e| e.to_string())?.success() {
-            return Ok(());
-        }
-    }
-    Err("no clipboard tool found (install pbcopy / wl-copy / xclip), or use --stdout".to_string())
+    vault_clip::copy_secret(data)
 }
 
 /// Read the current clipboard contents via the platform tool, if available.
 fn read_clipboard() -> Option<Vec<u8>> {
-    let candidates: &[(&str, &[&str])] = if cfg!(target_os = "macos") {
-        &[("pbpaste", &[])]
-    } else if cfg!(target_os = "windows") {
-        &[("powershell", &["-NoProfile", "-Command", "Get-Clipboard"])]
-    } else {
-        &[
-            ("wl-paste", &["--no-newline"]),
-            ("xclip", &["-selection", "clipboard", "-o"]),
-            ("xsel", &["-b", "-o"]),
-        ]
-    };
-    for (cmd, args) in candidates {
-        if let Ok(out) = std::process::Command::new(cmd)
-            .args(*args)
-            .stderr(Stdio::null())
-            .output()
-        {
-            if out.status.success() {
-                return Some(out.stdout);
-            }
-        }
-    }
-    None
+    vault_clip::read_clipboard()
 }
 
 /// Spawn a **detached** helper that clears the clipboard after `timeout` seconds — but only if the

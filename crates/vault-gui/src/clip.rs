@@ -1,77 +1,10 @@
-//! Clipboard delivery for the desktop app.
-//!
-//! Copy a secret via the OS tool (secret over **stdin**, never argv — C29), and clear it after a
-//! timeout **iff** it is still our secret (C13). The GUI process is long-lived, so the auto-clear
-//! runs as a background thread (same approach as the TUI). The secret is never rendered by the app.
+//! Clipboard delivery for the desktop app (constraints C13, C33).
 
-use std::io::Write;
-use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use zeroize::Zeroizing;
 
-fn copy_tools() -> &'static [(&'static str, &'static [&'static str])] {
-    if cfg!(target_os = "macos") {
-        &[("pbcopy", &[])]
-    } else if cfg!(target_os = "windows") {
-        &[("clip", &[])]
-    } else {
-        &[
-            ("wl-copy", &[]),
-            ("xclip", &["-selection", "clipboard"]),
-            ("xsel", &["-b", "-i"]),
-        ]
-    }
-}
-
-fn read_tools() -> &'static [(&'static str, &'static [&'static str])] {
-    if cfg!(target_os = "macos") {
-        &[("pbpaste", &[])]
-    } else if cfg!(target_os = "windows") {
-        &[("powershell", &["-NoProfile", "-Command", "Get-Clipboard"])]
-    } else {
-        &[
-            ("wl-paste", &["--no-newline"]),
-            ("xclip", &["-selection", "clipboard", "-o"]),
-            ("xsel", &["-b", "-o"]),
-        ]
-    }
-}
-
-/// Write `data` to the OS clipboard via the platform tool (stdin). Empty `data` clears it.
-pub fn copy(data: &[u8]) -> Result<(), String> {
-    for (cmd, args) in copy_tools() {
-        let child = Command::new(cmd)
-            .args(*args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn();
-        let mut child = match child {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-        if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(data).map_err(|e| e.to_string())?;
-        }
-        if child.wait().map_err(|e| e.to_string())?.success() {
-            return Ok(());
-        }
-    }
-    Err("no clipboard tool found (install pbcopy / wl-copy / xclip)".to_string())
-}
-
-/// Read the current clipboard contents, if a tool is available.
-pub fn read() -> Option<Vec<u8>> {
-    for (cmd, args) in read_tools() {
-        if let Ok(out) = Command::new(cmd).args(*args).stderr(Stdio::null()).output() {
-            if out.status.success() {
-                return Some(out.stdout);
-            }
-        }
-    }
-    None
-}
+pub use vault_clip::{clipboard_still_ours, copy_secret as copy, read_clipboard as read};
 
 /// After `secs`, clear the clipboard **iff** it still holds `secret` (tolerating a trailing newline).
 pub fn schedule_clear(secret: Zeroizing<Vec<u8>>, secs: u64) {
@@ -82,10 +15,7 @@ pub fn schedule_clear(secret: Zeroizing<Vec<u8>>, secs: u64) {
         std::thread::sleep(Duration::from_secs(secs));
         if let Some(cur) = read() {
             let cur = Zeroizing::new(cur);
-            let (c, s): (&[u8], &[u8]) = (&cur, &secret);
-            let unchanged =
-                c == s || c.strip_suffix(b"\n") == Some(s) || c.strip_suffix(b"\r\n") == Some(s);
-            if unchanged {
+            if clipboard_still_ours(&cur, &secret) {
                 let _ = copy(&[]);
             }
         }
@@ -95,8 +25,8 @@ pub fn schedule_clear(secret: Zeroizing<Vec<u8>>, secs: u64) {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn copy_tool_table_is_nonempty_for_this_platform() {
-        assert!(!super::copy_tools().is_empty());
-        assert!(!super::read_tools().is_empty());
+    fn c33_uses_vault_clip() {
+        let src = include_str!("clip.rs");
+        assert!(src.contains("vault_clip"));
     }
 }

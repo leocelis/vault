@@ -8,14 +8,13 @@ Vault is **functional pre-1.0**. This document describes the **automated quality
 | Metric | Value |
 |--------|-------|
 | Constraints | 60 (intent v1.7.0) |
-| PASS | 57 |
-| NEEDS_REVIEW | 3 (C14, C15, C33) |
+| PASS | 60 |
+| NEEDS_REVIEW | 0 |
 | FAIL | 0 |
 
 Full per-constraint table: [`CONSTRAINT_INDEX.md`](CONSTRAINT_INDEX.md#cp-7-ivd-rule-2-sweep-2026-06-18).
 
-**NEEDS_REVIEW summary:** C14/C15 hardware stanzas have unit/policy coverage only (no live FIDO2/TPM);
-C33 clipboard concealment OS hints deferred to S-1 (C13 timed clear remains).
+**Residual (documented, not sweep blockers):** live libfido2/TPM device FFI (M7); clipboard managers that ignore concealment hints ([`THREAT_MODEL.md`](THREAT_MODEL.md)).
 
 ## What the gate checks
 

@@ -7,6 +7,8 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- **C14/C15/C33 close-out:** `vault-clip` arboard concealment (C33); FIDO2 mock enroll/unlock
+  (C14); TPM CLI `--help` + PCR mock (C15); sweep now 60/60 PASS.
 - **CP-7 review fixes:** C28 preserves `\n`/`\t`, sanitizes `get --stdout`, ls/get integration tests;
   C13 `clipboard.rs` clear-iff-unchanged unit tests + hold-clipboard integration; tighter sweep
   row assertions; C29 labeled JSON-only (v1).

@@ -957,3 +957,18 @@ fn c13_hold_clipboard_zero_exits_immediately() {
     assert_eq!(code, Some(0), "stderr: {err}");
     let _ = std::fs::remove_dir_all(&home);
 }
+
+/// C15: `vault re-enroll-tpm --help` documents PCR brittleness (constraint C15 documentation test).
+#[test]
+fn c15_re_enroll_tpm_help_documents_pcr() {
+    let out = Command::new(env!("CARGO_BIN_EXE_vault"))
+        .arg("re-enroll-tpm")
+        .arg("--help")
+        .output()
+        .expect("spawn vault");
+    assert!(out.status.success());
+    let help = String::from_utf8_lossy(&out.stdout);
+    assert!(help.contains("PCR"), "help: {help}");
+    assert!(help.contains("firmware"), "help: {help}");
+    assert!(help.contains("re-enroll"), "help: {help}");
+}

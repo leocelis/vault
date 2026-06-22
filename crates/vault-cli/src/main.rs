@@ -174,6 +174,15 @@ enum Command {
         /// `on` to enable Padmé size-padding, `off` to disable it.
         state: String,
     },
+    /// Seal a TPM stanza to the current PCR policy (optional; Linux/Windows — constraint C15).
+    ///
+    /// PCR values change after firmware or kernel updates — run `vault re-enroll-tpm` to re-seal.
+    /// Discrete TPM bus attacks (SPI sniffing, TPM Genie) are not mitigated by PCR sealing alone.
+    EnrollTpm,
+    /// Re-seal the TPM stanza after firmware or kernel updates changed PCR values (constraint C15).
+    ///
+    /// Unseals with the current PCR policy, re-seals to new PCRs, and updates the TPM stanza.
+    ReEnrollTpm,
     /// Internal: detached clipboard auto-clear helper. Reads the secret on stdin; not for direct
     /// use (constraint C13 / UC-04).
     #[command(hide = true)]

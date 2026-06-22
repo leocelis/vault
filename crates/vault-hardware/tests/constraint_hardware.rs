@@ -26,8 +26,21 @@ fn c6_and_c14_salt_and_hkdf_wired() {
 }
 
 #[test]
-fn c15_tpm_policy_strings_present() {
-    use vault_hardware::tpm_policy::{ENROLL_COMMAND, PCR_MISMATCH_MESSAGE, RE_ENROLL_COMMAND};
-    assert!(PCR_MISMATCH_MESSAGE.contains(RE_ENROLL_COMMAND));
-    assert_eq!(ENROLL_COMMAND, "vault enroll-tpm");
+fn c14_mock_authenticator_integration() {
+    use vault_hardware::fido2_mock::{unlock_wrapping_key, Fido2Error, MockAuthenticator};
+    let vault_id = [0x99u8; 16];
+    let (auth, header) = MockAuthenticator::enroll(&vault_id, "vault.local");
+    assert!(unlock_wrapping_key(&vault_id, &header, &auth).is_ok());
+    let (wrong, _) = MockAuthenticator::enroll(&vault_id, "vault.local");
+    assert_eq!(
+        unlock_wrapping_key(&vault_id, &header, &wrong),
+        Err(Fido2Error::NoMatchingCredential)
+    );
+}
+
+#[test]
+fn c15_tpm_pcr_mock_emits_documented_error() {
+    use vault_hardware::tpm_mock::open_with_pcr;
+    assert!(open_with_pcr(1, 1).is_ok());
+    assert!(open_with_pcr(1, 2).unwrap_err().contains("re-enroll"));
 }

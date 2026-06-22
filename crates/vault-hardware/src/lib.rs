@@ -10,7 +10,9 @@
 #![forbid(unsafe_code)]
 #![allow(dead_code)]
 
+pub mod fido2_mock;
 pub mod fido2_salt;
+pub mod tpm_mock;
 pub mod tpm_policy;
 pub mod yubikey;
 

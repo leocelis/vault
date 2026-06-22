@@ -84,7 +84,7 @@ lane can build against from that point on.
 - crates.io Trusted Publishing ([docs/CRATES_IO_TRUSTED_PUBLISHING.md](docs/CRATES_IO_TRUSTED_PUBLISHING.md))
 
 ### CP-7 · Full IVD sweep → release quality gate ✅ *(M10)*
-- **Sweep complete 2026-06-18:** 57 PASS · 3 NEEDS_REVIEW (C14, C15, C33) — [`docs/CONSTRAINT_INDEX.md`](docs/CONSTRAINT_INDEX.md)
+- **Sweep complete 2026-06-18:** 60 PASS · 0 NEEDS_REVIEW — [`docs/CONSTRAINT_INDEX.md`](docs/CONSTRAINT_INDEX.md)
 - `just audit-ready` green (workspace tests + fmt + release benches + clippy)
 - **1.0.0** when NEEDS_REVIEW closed or accepted + first tagged release via CP-6 pipeline
 

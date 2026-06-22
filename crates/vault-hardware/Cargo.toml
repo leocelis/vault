@@ -12,6 +12,8 @@ repository.workspace = true
 vault-core = { path = "../vault-core", version = "0.0.0" }
 sha2 = { workspace = true }
 zeroize = { workspace = true }
+getrandom = { workspace = true }
+hmac = { workspace = true }
 
 # Most hardware integrations are feature-gated so users without a given device compile none of its
 # code. The YubiKey HMAC-SHA1 path is NOT gated: it shells out to `ykman` (like the clipboard tools),

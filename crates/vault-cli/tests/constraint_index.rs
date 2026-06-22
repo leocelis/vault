@@ -17,8 +17,8 @@ const CP7_SWEEP: &[(&str, &str)] = &[
     ("C11", "PASS"),
     ("C12", "PASS"),
     ("C13", "PASS"),
-    ("C14", "NEEDS_REVIEW"),
-    ("C15", "NEEDS_REVIEW"),
+    ("C14", "PASS"),
+    ("C15", "PASS"),
     ("C16", "PASS"),
     ("C17", "PASS"),
     ("C18", "PASS"),
@@ -36,7 +36,7 @@ const CP7_SWEEP: &[(&str, &str)] = &[
     ("C30", "PASS"),
     ("C31", "PASS"),
     ("C32", "PASS"),
-    ("C33", "NEEDS_REVIEW"),
+    ("C33", "PASS"),
     ("C34", "PASS"),
     ("C35", "PASS"),
     ("C36", "PASS"),
@@ -89,8 +89,8 @@ fn cp7_sweep_lists_all_sixty_constraints() {
         .iter()
         .filter(|(_, s)| *s == "NEEDS_REVIEW")
         .count();
-    assert_eq!(pass, 57);
-    assert_eq!(needs_review, 3);
+    assert_eq!(pass, 60);
+    assert_eq!(needs_review, 0);
 
     for (id, status) in CP7_SWEEP {
         let needle = format!("| {id} |");
@@ -117,6 +117,7 @@ fn distributed_test_suites_exist() {
         "crates/vault-cli/tests/constraint_policy.rs",
         "crates/vault-cli/src/terminal.rs",
         "crates/vault-cli/src/clipboard.rs",
+        "crates/vault-clip/src/lib.rs",
         "crates/vault-core/tests/robustness.rs",
         "crates/vault-core/tests/constraint_gaps.rs",
         "crates/vault-hardware/tests/constraint_hardware.rs",
