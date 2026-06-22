@@ -7,6 +7,9 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- **`vault lock` (CP-5):** clears clipboard and documents per-process CLI session model (UC-06 §3.4).
+- **`vault export --format json` (S-6 / UC-05):** full-vault plaintext JSON to stdout with frozen
+  warning, TTY confirmation or `--yes`, strict serde_json encoding (C29), integration tests.
 - **Audit gap closure:** `VAULT_PASSWORD_FILE`, `--password-fd`/`--password-stdin`, `cargo auditable`
   + CycloneDX in `release.yml`, C54 a11y label tests + accessibility guide, third-party audit
   doc, research gap headers synced to ADDRESSED status.
@@ -370,4 +373,4 @@ All notable changes to this project are documented here. The format is based on
 ### Notes
 - Vault is **functional pre-1.0** — CLI and desktop app work; keep your own backup of secrets until 1.0.
 
-[Unreleased]: https://github.com/leocelis/vault/commits/main
+[Unreleased]: https://github.com/vault/commits/main

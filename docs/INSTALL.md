@@ -1,7 +1,7 @@
 # Installation
 
 > **Status:** functional pre-1.0 — build from source or install via `cargo install --git`.
-> Pre-built signed binaries ship on [GitHub Releases](https://github.com/leocelis/vault/releases)
+> Pre-built signed binaries ship on [GitHub Releases](https://github.com/vault/releases)
 > when a version tag is pushed. There is no [crates.io](https://crates.io) publish yet.
 
 ## Quick install (recommended)
@@ -44,7 +44,7 @@ ldd target/x86_64-unknown-linux-musl/release/vault   # → "not a dynamic execut
 
 ## Pre-built binaries
 
-When available, download from [GitHub Releases](https://github.com/leocelis/vault/releases), then
+When available, download from [GitHub Releases](https://github.com/vault/releases), then
 **verify the signature and checksum** before running — see [VERIFYING_RELEASES.md](VERIFYING_RELEASES.md).
 
 ## Supported platforms

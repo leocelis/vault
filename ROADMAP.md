@@ -73,7 +73,7 @@ lane can build against from that point on.
 
 ### CP-5 · CLI core loop *(M6)*
 `C20 C21 C22 C27ᵈᵉᶠᵃᵘˡᵗ C28 C29 C31` · specs [UC-01](docs/specs/UC-01-install-and-init.md), [UC-04](docs/specs/UC-04-model-blind-retrieval.md), [UC-06](docs/specs/UC-06-entry-management.md)
-- `init` (≤5 prompts) · `add` · `get` (clipboard default) · `ls --search` · `edit` (field-by-field) · `rm` · `lock`
+- `init` (≤5 prompts) · `add` · `get` (clipboard default) · `ls --search` · `edit` (field-by-field) · `rm` · `lock` ✅
 - Non-TTY behavior matrix; no secrets on argv; musl static build verified
 - **Freezes:** CLI surface & exit codes (scripts can rely on them)
 
@@ -97,7 +97,7 @@ lane can build against from that point on.
 | S-3 | **zxcvbn entropy warning** (60-bit floor, warn-don't-block) | [UC-02](docs/specs/UC-02-csprng-generation.md) | nothing | Wraps the zxcvbn crate |
 | S-4 | ✅ **`vault tune`** — Argon2id benchmark + recommend m/t/p (~300 ms) | [UC-11](docs/specs/UC-11-kdf-calibration.md) | CP-2 (kdf fn) | **DONE** (C22): probe + linear-extrapolate `m`, clamp to policy, re-measure; unlock progress line |
 | S-5 | **Import parsers** — txt, JSON, Bitwarden JSON, KeePassXC CSV (+ M9: kdbx via `keepass`, pass via gpg subprocess) | [UC-12](docs/specs/UC-12-migration-import.md) | CP-1 (Entry model) | Each format = one PR; fuzz each parser |
-| S-6 | **`vault export` + `--stdout` plumbing** — warning strings, non-TTY matrix; unlock via `--password-fd`/`--password-stdin`/`VAULT_PASSWORD_FILE` ✅ | [UC-05](docs/specs/UC-05-script-and-ci-output.md) | CP-5 partially | `export` still pending |
+| S-6 | ✅ **`vault export` + `--stdout` plumbing** — JSON export, warnings, non-TTY matrix, unlock channels | [UC-05](docs/specs/UC-05-script-and-ci-output.md) | CP-5 partially | Done |
 | S-7 | **`vault merge`** — UUID union, `modified_at` tiebreak, masked diffs (8-bullet Protected) | [UC-08](docs/specs/UC-08-conflict-merge.md) | CP-4 | Needs read/write API |
 | S-8a | **FIDO2 stanza** (libfido2 raw CTAP2) | [UC-09](docs/specs/UC-09-hardware-factors.md) | CP-2 (stanza API) | Optional for v1 (M7) |
 | S-8b | 🟡 **YubiKey CR stanza** | [UC-09](docs/specs/UC-09-hardware-factors.md) | CP-2 | **CLI DONE** (`vault enroll yubikey`): composite **AND** 2FA (password + key both required) + one-time recovery code; HMAC-SHA1 slot-2 via `ykman` subprocess (no FFI). Pending: GUI enrollment + the UC-09 AND-model intent amendment |

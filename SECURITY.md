@@ -16,7 +16,7 @@ bug reports are welcome against it.
 vulnerabilities.**
 
 Report privately via **GitHub Security Advisories**:
-👉 https://github.com/leocelis/vault/security/advisories/new
+👉 https://github.com/vault/security/advisories/new
 
 If you cannot use that channel, email the maintainers (see [MAINTAINERS.md](MAINTAINERS.md))
 with the subject line `VAULT-SECURITY`. GHSA supports private threads without encryption; if you

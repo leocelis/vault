@@ -151,6 +151,93 @@ fn cli_end_to_end() {
     let _ = std::fs::remove_file(&vault);
 }
 
+#[test]
+fn export_json_dumps_all_entries() {
+    let vault = unique_vault();
+    let vs = vault.to_str().unwrap();
+    let sample = sample_path();
+    let sp = sample.to_str().unwrap();
+    let pw = "export-pass\n";
+
+    let (ok, _, err) = run(
+        &[
+            "--vault",
+            vs,
+            "init",
+            "--kdf-m-cost",
+            "8192",
+            "--kdf-t-cost",
+            "1",
+            "--kdf-p-cost",
+            "1",
+            "--allow-weak-password",
+        ],
+        pw,
+    );
+    assert!(ok, "init: {err}");
+
+    let (ok, _, err) = run(
+        &["--vault", vs, "import", "--format", "raw", sp, "--yes"],
+        pw,
+    );
+    assert!(ok, "import: {err}");
+
+    let (ok, out, err) = run(
+        &["--vault", vs, "export", "--format", "json", "--yes"],
+        pw,
+    );
+    assert!(ok, "export failed: {err}");
+    assert!(
+        err.contains("WARNING: export writes ALL decrypted entries"),
+        "stderr: {err}"
+    );
+    let v: serde_json::Value = serde_json::from_str(out.trim()).expect("valid JSON");
+    assert_eq!(v["vault_export_version"], 1);
+    let entries = v["entries"].as_array().unwrap();
+    assert!(entries.len() >= 2);
+    let github = entries
+        .iter()
+        .find(|e| e["title"] == "github")
+        .expect("github entry");
+    assert!(github["password"]
+        .as_str()
+        .unwrap()
+        .contains("ghp_FAKE"));
+}
+
+#[test]
+fn export_piped_without_yes_exits_8() {
+    let vault = unique_vault();
+    let vs = vault.to_str().unwrap();
+    let home = shared_home();
+    let pw = "export-no-yes\n";
+    let (code, _, _) = run_env(
+        &home,
+        &[
+            "--password-stdin",
+            "--vault",
+            vs,
+            "init",
+            "--kdf-m-cost",
+            "8192",
+            "--kdf-t-cost",
+            "1",
+            "--kdf-p-cost",
+            "1",
+            "--allow-weak-password",
+        ],
+        pw,
+    );
+    assert_eq!(code, Some(0));
+    let (code, _, err) = run_env(
+        &home,
+        &["--password-stdin", "--vault", vs, "export", "--format", "json"],
+        pw,
+    );
+    assert_eq!(code, Some(8), "stderr: {err}");
+    let _ = std::fs::remove_file(&vault);
+}
+
 fn unique_dir(tag: &str) -> PathBuf {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -699,6 +786,14 @@ fn non_interactive_without_password_channel_exits_5() {
     assert!(err.contains("non-interactive"), "stderr: {err}");
 
     let _ = std::fs::remove_file(&vault);
+}
+
+#[test]
+fn lock_exits_zero_and_documents_per_process_model() {
+    let (ok, _, err) = run(&["lock"], "");
+    assert!(ok, "lock failed: {err}");
+    assert!(err.contains("Locked"), "stderr: {err}");
+    assert!(err.contains("no unlock session"), "stderr: {err}");
 }
 
 #[cfg(unix)]

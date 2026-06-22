@@ -15,6 +15,7 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 mod commands;
+mod export;
 mod unlock_secret;
 
 /// Vault — a security layer for the AI era.
@@ -82,6 +83,15 @@ enum Command {
     },
     /// Offline health check — report weak, reused, stale, and expiring passwords (by title only).
     Audit,
+    /// Export all entries as decrypted JSON to stdout (security warning + confirmation).
+    Export {
+        /// Export format (v1: `json` only).
+        #[arg(long, default_value = "json")]
+        format: String,
+        /// Skip the confirmation prompt (required when stdout is not a TTY).
+        #[arg(long)]
+        yes: bool,
+    },
     /// Generate the current 2FA (TOTP) code for an entry — to the clipboard by default.
     Otp {
         name: String,
@@ -133,7 +143,7 @@ enum Command {
     Edit { name: String },
     /// Delete an entry (confirmation required). *(not yet implemented)*
     Rm { name: String },
-    /// Clear the in-memory session. *(not yet implemented)*
+    /// Clear the in-memory session (clipboard; v1 CLI has no cross-command unlock cache).
     Lock,
     /// Re-encrypt the vault with stronger Argon2id parameters (constraint C2).
     UpgradeKdf {

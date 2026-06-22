@@ -18,9 +18,11 @@ Default vault path: `$HOME/.vault/vault.vlt` (override with `--vault PATH`).
 | `vault add NAME` | Add an entry (interactive prompts; no secrets on argv). |
 | `vault edit NAME` | Edit an entry (interactive). |
 | `vault rm NAME` | Delete an entry (confirmation on TTY). |
+| `vault lock` | Clear clipboard; note per-process CLI has no persistent unlock session. |
 | `vault gen [--length N] [--charset …] [--words N]` | CSPRNG password / diceware generator. |
 | `vault otp NAME [--stdout]` | Current TOTP code for an entry with a 2FA secret. |
 | `vault audit` | Offline **password health** report (weak/reused/stale) — not the CI dependency audit |
+| `vault export --format json [--yes]` | Decrypted JSON to stdout (warning on stderr; `--yes` when piped). |
 | `vault upgrade-kdf` | Re-encrypt with stronger Argon2id parameters. |
 | `vault tune` | Benchmark and recommend Argon2id params (~300 ms target). |
 | `vault pad on\|off` | Toggle Padmé payload size-padding (UC-07). |
@@ -31,8 +33,6 @@ Default vault path: `$HOME/.vault/vault.vlt` (override with `--vault PATH`).
 
 | Command | Notes |
 |---------|-------|
-| `vault lock` | In-memory session clear. |
-| `vault export --format json` | Decrypted export with security warning. |
 | `vault import --format txt\|json` | Structured importers (UC-12). |
 | `vault merge OLD NEW` | Conflict merge (UC-08). |
 | `vault stanzas …` | Hardware stanza management. |

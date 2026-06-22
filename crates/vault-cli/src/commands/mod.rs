@@ -14,6 +14,7 @@ use vault_core::gen::{password as gen_password, Charset};
 use vault_core::Vault;
 use zeroize::Zeroizing;
 
+use crate::export::{self, EXPORT_CONFIRM, EXPORT_WARNING};
 use crate::unlock_secret::{self, UnlockSecretOpts};
 use crate::Command;
 
@@ -88,6 +89,9 @@ pub fn dispatch(vault_opt: Option<PathBuf>, opts: &OpenOpts, command: Command) -
         } => cmd_import(&vault_path(vault_opt)?, &format, &source, yes, opts),
         Command::Ls { search } => cmd_ls(&vault_path(vault_opt)?, search.as_deref(), opts),
         Command::Audit => cmd_audit(&vault_path(vault_opt)?, opts),
+        Command::Export { format, yes } => {
+            cmd_export(&vault_path(vault_opt)?, &format, yes, opts)
+        }
         Command::Get {
             name,
             field,
@@ -139,7 +143,7 @@ pub fn dispatch(vault_opt: Option<PathBuf>, opts: &OpenOpts, command: Command) -
         Command::Enroll { factor, path } => {
             cmd_enroll(&vault_path(vault_opt)?, &factor, path.as_deref(), opts)
         }
-        Command::Lock => Err("that command is not implemented yet".to_string()),
+        Command::Lock => cmd_lock(),
     }
 }
 
@@ -314,6 +318,32 @@ fn cmd_audit(path: &Path, opts: &OpenOpts) -> CmdResult {
         }
     }
     Ok(())
+}
+
+fn cmd_export(path: &Path, format: &str, yes: bool, opts: &OpenOpts) -> CmdResult {
+    if format != "json" {
+        return Err(usage_err("only --format json is supported"));
+    }
+    eprintln!("{EXPORT_WARNING}");
+    let stdout_tty = std::io::stdout().is_terminal();
+    if !yes {
+        if stdout_tty {
+            if !confirm(EXPORT_CONFIRM)? {
+                return Err("aborted".to_string());
+            }
+        } else {
+            return Err(usage_err(
+                "piped/non-interactive export requires --yes",
+            ));
+        }
+    }
+    let password = unlock_secret::read_master_password(false, &opts.unlock)?;
+    let vault = open_vault(path, password.as_bytes(), opts)?;
+    let json = export::build_export_json(vault.entries())?;
+    std::io::stdout()
+        .write_all(json.as_bytes())
+        .and_then(|_| std::io::stdout().write_all(b"\n"))
+        .map_err(|e| e.to_string())
 }
 
 fn cmd_get(
@@ -538,6 +568,20 @@ fn cmd_gen_passphrase(n: usize, wordlist: Option<&Path>) -> CmdResult {
     if wordlist.is_none() {
         eprintln!("(tip: for ~12.9 bits/word, use --wordlist with the EFF large list from https://www.eff.org/dice)");
     }
+    Ok(())
+}
+
+/// Clear local session hygiene (UC-06 §3.4). v1 CLI is per-process — no cached unlock between
+/// commands; this clears the clipboard and documents forward-compat for a future agent session.
+fn cmd_lock() -> CmdResult {
+    match copy_to_clipboard(b"") {
+        Ok(()) => eprintln!("Locked: clipboard cleared."),
+        Err(_) => eprintln!("Locked: no clipboard tool available to clear."),
+    }
+    eprintln!(
+        "note: the CLI keeps no unlock session between commands — secrets are zeroized when \
+         each command exits."
+    );
     Ok(())
 }
 
