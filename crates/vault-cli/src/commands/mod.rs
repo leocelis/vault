@@ -89,9 +89,7 @@ pub fn dispatch(vault_opt: Option<PathBuf>, opts: &OpenOpts, command: Command) -
         } => cmd_import(&vault_path(vault_opt)?, &format, &source, yes, opts),
         Command::Ls { search } => cmd_ls(&vault_path(vault_opt)?, search.as_deref(), opts),
         Command::Audit => cmd_audit(&vault_path(vault_opt)?, opts),
-        Command::Export { format, yes } => {
-            cmd_export(&vault_path(vault_opt)?, &format, yes, opts)
-        }
+        Command::Export { format, yes } => cmd_export(&vault_path(vault_opt)?, &format, yes, opts),
         Command::Get {
             name,
             field,
@@ -332,9 +330,7 @@ fn cmd_export(path: &Path, format: &str, yes: bool, opts: &OpenOpts) -> CmdResul
                 return Err("aborted".to_string());
             }
         } else {
-            return Err(usage_err(
-                "piped/non-interactive export requires --yes",
-            ));
+            return Err(usage_err("piped/non-interactive export requires --yes"));
         }
     }
     let password = unlock_secret::read_master_password(false, &opts.unlock)?;
@@ -1091,7 +1087,6 @@ fn write_vault(path: &Path, bytes: &[u8]) -> CmdResult {
     Ok(())
 }
 
-
 fn confirm(question: &str) -> Result<bool, String> {
     eprint!("{question} [y/N] ");
     std::io::stderr().flush().ok();
@@ -1223,15 +1218,7 @@ fn mask(secret: &[u8]) -> String {
     }
 }
 
-/// Render control / ANSI bytes as visible escapes before writing to a terminal (constraint C30).
+/// Render control / ANSI bytes as visible escapes before writing to a terminal (constraint C28).
 fn sanitize(s: &str) -> String {
-    s.chars()
-        .map(|c| {
-            if c == '\t' || !c.is_control() {
-                c.to_string()
-            } else {
-                format!("\\x{:02x}", c as u32)
-            }
-        })
-        .collect()
+    crate::terminal::sanitize_for_terminal(s)
 }

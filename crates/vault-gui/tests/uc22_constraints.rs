@@ -12,10 +12,7 @@ fn read_gui_config() -> String {
 }
 
 fn read_search_tests() -> String {
-    std::fs::read_to_string(
-        repo_root().join("crates/vault-core/src/search.rs"),
-    )
-    .expect("search.rs")
+    std::fs::read_to_string(repo_root().join("crates/vault-core/src/search.rs")).expect("search.rs")
 }
 
 #[test]

@@ -182,10 +182,7 @@ fn export_json_dumps_all_entries() {
     );
     assert!(ok, "import: {err}");
 
-    let (ok, out, err) = run(
-        &["--vault", vs, "export", "--format", "json", "--yes"],
-        pw,
-    );
+    let (ok, out, err) = run(&["--vault", vs, "export", "--format", "json", "--yes"], pw);
     assert!(ok, "export failed: {err}");
     assert!(
         err.contains("WARNING: export writes ALL decrypted entries"),
@@ -199,10 +196,7 @@ fn export_json_dumps_all_entries() {
         .iter()
         .find(|e| e["title"] == "github")
         .expect("github entry");
-    assert!(github["password"]
-        .as_str()
-        .unwrap()
-        .contains("ghp_FAKE"));
+    assert!(github["password"].as_str().unwrap().contains("ghp_FAKE"));
 }
 
 #[test]
@@ -231,7 +225,14 @@ fn export_piped_without_yes_exits_8() {
     assert_eq!(code, Some(0));
     let (code, _, err) = run_env(
         &home,
-        &["--password-stdin", "--vault", vs, "export", "--format", "json"],
+        &[
+            "--password-stdin",
+            "--vault",
+            vs,
+            "export",
+            "--format",
+            "json",
+        ],
         pw,
     );
     assert_eq!(code, Some(8), "stderr: {err}");
@@ -776,7 +777,14 @@ fn non_interactive_without_password_channel_exits_5() {
     let vs = vault.to_str().unwrap();
     let home = shared_home();
     let pw = "pw-5\n";
-    let fast = &["--kdf-m-cost", "8192", "--kdf-t-cost", "1", "--kdf-p-cost", "1"];
+    let fast = &[
+        "--kdf-m-cost",
+        "8192",
+        "--kdf-t-cost",
+        "1",
+        "--kdf-p-cost",
+        "1",
+    ];
     let mut init_args = vec!["--vault", vs, "init", "--allow-weak-password"];
     init_args.extend_from_slice(fast);
     assert_eq!(run_env(&home, &init_args, pw).0, Some(0));
@@ -815,7 +823,14 @@ fn vault_password_file_env_unlocks() {
             .unwrap();
         f.write_all(b"file-pass\n").unwrap();
     }
-    let fast = &["--kdf-m-cost", "8192", "--kdf-t-cost", "1", "--kdf-p-cost", "1"];
+    let fast = &[
+        "--kdf-m-cost",
+        "8192",
+        "--kdf-t-cost",
+        "1",
+        "--kdf-p-cost",
+        "1",
+    ];
     let mut init_args = vec!["--vault", vs, "init", "--allow-weak-password"];
     init_args.extend_from_slice(fast);
     let (code, _, err) = run_env(&home, &init_args, "file-pass\n");
@@ -832,7 +847,12 @@ fn vault_password_file_env_unlocks() {
         .spawn()
         .unwrap();
     let out = child.wait_with_output().unwrap();
-    assert_eq!(out.status.code(), Some(0), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 
     let _ = std::fs::remove_file(&vault);
 }

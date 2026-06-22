@@ -39,7 +39,8 @@ fn c23_no_network_dependencies_in_shipped_crates() {
         }
     }
 
-    let main_rs = std::fs::read_to_string(repo_root().join("crates/vault-cli/src/main.rs")).unwrap();
+    let main_rs =
+        std::fs::read_to_string(repo_root().join("crates/vault-cli/src/main.rs")).unwrap();
     for needle in ["reqwest::", "hyper::", "TcpStream::connect", "ureq::"] {
         assert!(
             !main_rs.contains(needle),
@@ -78,20 +79,17 @@ fn c24_open_source_license_and_supply_chain_policy() {
 
 #[test]
 fn c57_cli_honors_vault_vault_path_env() {
-    let src = std::fs::read_to_string(
-        repo_root().join("crates/vault-cli/src/commands/mod.rs"),
-    )
-    .unwrap();
+    let src =
+        std::fs::read_to_string(repo_root().join("crates/vault-cli/src/commands/mod.rs")).unwrap();
     assert!(src.contains("VAULT_VAULT_PATH"));
 }
 
 #[test]
 fn c31_unlock_secret_channels_wired() {
-    let main_rs = std::fs::read_to_string(repo_root().join("crates/vault-cli/src/main.rs")).unwrap();
-    let unlock = std::fs::read_to_string(
-        repo_root().join("crates/vault-cli/src/unlock_secret.rs"),
-    )
-    .unwrap();
+    let main_rs =
+        std::fs::read_to_string(repo_root().join("crates/vault-cli/src/main.rs")).unwrap();
+    let unlock =
+        std::fs::read_to_string(repo_root().join("crates/vault-cli/src/unlock_secret.rs")).unwrap();
     assert!(main_rs.contains("password_fd"));
     assert!(main_rs.contains("password_stdin"));
     assert!(unlock.contains("VAULT_PASSWORD_FILE"));

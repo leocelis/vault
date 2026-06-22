@@ -7,6 +7,9 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- **CP-7 IVD sweep:** full C1–C60 PASS/NEEDS_REVIEW table in `docs/CONSTRAINT_INDEX.md`
+  (57 PASS, 3 NEEDS_REVIEW); `audit-readiness.sh` runs workspace tests + fmt check;
+  C28 terminal sanitize module + named tests; C29 export JSON test; constraint index tests.
 - **CP-6 distribution trust:** reproducible release env in `release.yml`, in-pipeline cosign
   verify, vendor tarball, crates.io Trusted Publishing job, `just reproduce`, release docs.
 - **`vault lock` (CP-5):** clears clipboard and documents per-process CLI session model (UC-06 §3.4).

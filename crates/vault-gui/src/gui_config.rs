@@ -139,7 +139,9 @@ mod tests {
 
     #[test]
     fn config_dir_ends_with_dot_vault_when_home_set() {
-        if std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")).is_some()
+        if std::env::var_os("HOME")
+            .or_else(|| std::env::var_os("USERPROFILE"))
+            .is_some()
             && std::env::var("VAULT_CONFIG_DIR").is_err()
         {
             let d = config_dir().expect("home");

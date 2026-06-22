@@ -105,9 +105,8 @@ fn check_mode_0600(path: &Path) -> Result<(), String> {
 }
 
 fn prompt_tty(confirm_match: bool) -> Result<Zeroizing<String>, String> {
-    let p = Zeroizing::new(
-        rpassword::prompt_password("Master password: ").map_err(|e| e.to_string())?,
-    );
+    let p =
+        Zeroizing::new(rpassword::prompt_password("Master password: ").map_err(|e| e.to_string())?);
     if confirm_match {
         let again = Zeroizing::new(
             rpassword::prompt_password("Confirm password: ").map_err(|e| e.to_string())?,

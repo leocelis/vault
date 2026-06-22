@@ -16,6 +16,7 @@ use std::path::PathBuf;
 
 mod commands;
 mod export;
+mod terminal;
 mod unlock_secret;
 
 /// Vault — a security layer for the AI era.

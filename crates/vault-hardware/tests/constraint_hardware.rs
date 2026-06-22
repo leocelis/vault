@@ -19,7 +19,10 @@ fn c6_and_c14_salt_and_hkdf_wired() {
     assert_ne!(salt, [0u8; 32]);
     let key = wrapping_key(&prf, &vault_id);
     assert_ne!(key, prf);
-    assert_eq!(key, vault_core::crypto::hkdf32(&prf, &vault_id, HW_WRAP_INFO));
+    assert_eq!(
+        key,
+        vault_core::crypto::hkdf32(&prf, &vault_id, HW_WRAP_INFO)
+    );
 }
 
 #[test]

@@ -33,7 +33,10 @@ pub struct ExportEntry {
 
 /// Build the v1 export document from decrypted entries (strict JSON via serde_json — C29).
 pub fn build_export_json(entries: &[Entry]) -> Result<String, String> {
-    let mut export_entries: Vec<ExportEntry> = entries.iter().map(entry_to_export).collect::<Result<_, _>>()?;
+    let mut export_entries: Vec<ExportEntry> = entries
+        .iter()
+        .map(entry_to_export)
+        .collect::<Result<_, _>>()?;
     export_entries.sort_by(|a, b| a.title.cmp(&b.title));
     let doc = VaultExport {
         vault_export_version: 1,
@@ -76,11 +79,11 @@ fn entry_to_export(e: &Entry) -> Result<ExportEntry, String> {
 }
 
 fn utf8_secret(entry: &str, field: &str, bytes: &[u8]) -> Result<String, String> {
-    std::str::from_utf8(bytes).map(|s| s.to_owned()).map_err(|_| {
-        format!(
-            "entry {entry:?} field {field:?} contains non-UTF-8 bytes; cannot JSON-export"
-        )
-    })
+    std::str::from_utf8(bytes)
+        .map(|s| s.to_owned())
+        .map_err(|_| {
+            format!("entry {entry:?} field {field:?} contains non-UTF-8 bytes; cannot JSON-export")
+        })
 }
 
 /// Format unix seconds as RFC 3339 UTC (`2026-06-10T12:00:00Z`).
@@ -94,7 +97,9 @@ fn rfc3339_utc(secs: i64) -> Result<String, String> {
     let hour = rem / 3600;
     let minute = (rem % 3600) / 60;
     let second = rem % 60;
-    Ok(format!("{y:04}-{m:02}-{d:02}T{hour:02}:{minute:02}:{second:02}Z"))
+    Ok(format!(
+        "{y:04}-{m:02}-{d:02}T{hour:02}:{minute:02}:{second:02}Z"
+    ))
 }
 
 /// Civil calendar date from days since 1970-01-01 (UTC).
@@ -135,7 +140,7 @@ mod tests {
     }
 
     #[test]
-    fn json_export_escapes_control_and_quotes() {
+    fn c29_json_export_strict_escaping() {
         let e = sample_entry("t", "pass\"word", "line1\nline2\x07");
         let json = build_export_json(&[e]).unwrap();
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();

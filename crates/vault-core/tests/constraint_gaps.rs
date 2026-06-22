@@ -31,7 +31,10 @@ fn c3_audited_crypto_deps_and_deny_policy() {
     );
 
     let deny = std::fs::read_to_string(repo_root().join("deny.toml")).unwrap();
-    assert!(deny.contains("cargo-deny"), "deny.toml should document cargo-deny");
+    assert!(
+        deny.contains("cargo-deny"),
+        "deny.toml should document cargo-deny"
+    );
     assert!(deny.contains("openssl"), "deny.toml must ban openssl");
 
     let crypto_mod =
@@ -65,7 +68,10 @@ fn c4_data_key_random_and_rewrap_preserves_key() {
     let recovered = unwrap_password_stanza(&old_stanza, b"old-pw", &SALT, &VID, M, T, P).unwrap();
     let new_stanza =
         wrap_password_stanza(recovered.expose_secret(), b"new-pw", &SALT, &VID, M, T, P).unwrap();
-    assert_ne!(old_stanza.data, new_stanza.data, "re-wrap uses fresh wrap nonce");
+    assert_ne!(
+        old_stanza.data, new_stanza.data,
+        "re-wrap uses fresh wrap nonce"
+    );
     let out = unwrap_password_stanza(&new_stanza, b"new-pw", &SALT, &VID, M, T, P).unwrap();
     assert_eq!(out.expose_secret(), &dk);
 }

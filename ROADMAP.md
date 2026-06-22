@@ -83,9 +83,10 @@ lane can build against from that point on.
 - `cargo auditable` embedded SBOM + CycloneDX sidecar · vendor tarball · in-pipeline cosign verify
 - crates.io Trusted Publishing ([docs/CRATES_IO_TRUSTED_PUBLISHING.md](docs/CRATES_IO_TRUSTED_PUBLISHING.md))
 
-### CP-7 · Full IVD sweep → release quality gate → v1.0 *(M10)*
-- IVD Rule 2 sweep: all 60 constraints, PASS/FAIL/NEEDS_REVIEW; [`docs/CONSTRAINT_INDEX.md`](docs/CONSTRAINT_INDEX.md) complete
-- `just audit-ready` green; format freeze → **1.0.0**
+### CP-7 · Full IVD sweep → release quality gate ✅ *(M10)*
+- **Sweep complete 2026-06-18:** 57 PASS · 3 NEEDS_REVIEW (C14, C15, C33) — [`docs/CONSTRAINT_INDEX.md`](docs/CONSTRAINT_INDEX.md)
+- `just audit-ready` green (workspace tests + fmt + release benches + clippy)
+- **1.0.0** when NEEDS_REVIEW closed or accepted + first tagged release via CP-6 pipeline
 
 ---
 

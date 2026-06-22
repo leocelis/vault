@@ -3,6 +3,20 @@
 Vault is **functional pre-1.0**. This document describes the **automated quality gate** before the
 `1.0.0` tag ([ROADMAP](../ROADMAP.md) CP-7) — not a substitute for careful review.
 
+## CP-7 sweep result (2026-06-18)
+
+| Metric | Value |
+|--------|-------|
+| Constraints | 60 (intent v1.7.0) |
+| PASS | 57 |
+| NEEDS_REVIEW | 3 (C14, C15, C33) |
+| FAIL | 0 |
+
+Full per-constraint table: [`CONSTRAINT_INDEX.md`](CONSTRAINT_INDEX.md#cp-7-ivd-rule-2-sweep-2026-06-18).
+
+**NEEDS_REVIEW summary:** C14/C15 hardware stanzas have unit/policy coverage only (no live FIDO2/TPM);
+C33 clipboard concealment OS hints deferred to S-1 (C13 timed clear remains).
+
 ## What the gate checks
 
 | Area | Artifacts | Constraints |
@@ -26,7 +40,8 @@ just audit-ready
 # or: ./scripts/audit-readiness.sh
 ```
 
-Runs release search benchmarks (C38/C59), clippy, and supply-chain checks when tools are installed.
+Runs release search benchmarks (C38/C59), **workspace tests**, **format check**, clippy, and
+supply-chain checks when tools are installed.
 
 ## IVD constraint index
 

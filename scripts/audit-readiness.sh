@@ -14,6 +14,12 @@ fi
 echo "==> Release search benchmarks (C38, C59)"
 cargo test -p vault-core --release latency
 
+echo "==> Workspace tests"
+cargo test --workspace --quiet
+
+echo "==> Format check"
+cargo fmt --all -- --check
+
 echo "==> Clippy (-D warnings)"
 cargo clippy --all-targets --all-features -- -D warnings
 
